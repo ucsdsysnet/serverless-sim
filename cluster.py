@@ -21,7 +21,7 @@ def update_metric(metric):
 def dashboard():
     print('\n======== DASHBOARD ========')
     for k, l in metrics.items():
-        print(k, ':', len(l))
+        print(k, ':  \t\t', len(l))
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -124,45 +124,3 @@ class Cluster(object):
         for h in self.hosts:
             h.describe()
 
-def main():
-    hosts = []
-    for i in range(5):
-        hosts.append(Host(i, 10))
-    cluster = Cluster(hosts)
-
-    # define functions
-    functions = []
-    for i in range(1):
-        functions.append(Function(1, 2))
-
-    # define invocations
-    invocations = {3:[]}
-    for _ in range(26):
-        invocations[3].append(Invocation(functions[0], 4))
-
-    invoke_queue = []
-    # ticks
-    global epoch
-    for e in range(15):
-        epoch = e
-        cluster.tick()
-        for i in invocations.get(epoch, []):
-            invoke_queue.append(i)
-        
-        print('scheduling...')
-        i = 0
-        while i < len(invoke_queue):
-            if cluster.schedule(invoke_queue[i]):
-                invoke_queue.pop(i)
-            else:
-                update_metric('inqueue')
-                i += 1
-    
-        print('\n======== epoch', epoch, '========')
-        print('in queue:', len(invoke_queue))
-        cluster.describe()
-
-    dashboard()
-
-if __name__=='__main__':
-    main()
