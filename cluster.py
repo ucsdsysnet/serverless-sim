@@ -52,9 +52,10 @@ class Host(object):
         update_metric('cold-start')
 
     def evict(self):
-        for k, v in self.sandboxes.items():
+        for k, v in list(self.sandboxes.items()):
             if v == 0:
                 self.sandboxes.pop(k)
+                break
         else:
             raise RuntimeError('cannot evict any sandbox')
         update_metric('evict')
