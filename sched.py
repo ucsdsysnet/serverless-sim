@@ -6,10 +6,22 @@ from collections import OrderedDict
 
 SANDBOX_CAP = 10
 
-metrics = {'':[],
-           'cold-start':[], 
-           'eviction':[], 
-           'queue':[]}
+epoch = 0
+
+metrics = { 'invoke':[],
+            'finish':[],
+            'cold-start':[], 
+            'evict':[], 
+            'inqueue':[],
+            'non-home':[]}
+
+def update_metric(metric):
+    metrics[metric].append(epoch)
+
+def dashboard():
+    print('\n======== DASHBOARD ========')
+    for k, l in metrics.items():
+        print(k, ':', len(l))
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -26,7 +38,7 @@ class Host(object):
         self.host_id = host_id
         self.host_size = host_size
         self.load = 0
-        self.sandboxes = OrderedDict() # function_id -> # of active_invocations
+        self.sandboxes = OrderedDict() # function_id -> # of active_invocations, also an LRU
         self.invocations = set()
     
     def tick(self):
@@ -37,6 +49,7 @@ class Host(object):
 
     def install(self, function):
         self.sandboxes[function.function_id] = 1
+        update_metric('cold-start')
 
     def evict(self):
         for k, v in self.sandboxes.items():
@@ -44,6 +57,7 @@ class Host(object):
                 self.sandboxes.pop(k)
         else:
             raise RuntimeError('cannot evict any sandbox')
+        update_metric('evict')
 
     def invoke(self, invocation):
         function = invocation.function
@@ -56,11 +70,13 @@ class Host(object):
             self.install(function)
         self.invocations.add(invocation)
         self.load += function.demand
+        update_metric('invoke')
 
     def finish(self, invocation):
         self.load -= invocation.function.demand
         self.sandboxes[invocation.function.function_id] -= 1
         self.invocations.remove(invocation)
+        update_metric('finish')
     
     def full(self, function):
         if self.load + function.demand > self.host_size: # overload
@@ -93,8 +109,8 @@ class Cluster(object):
             remaining -= 1
             stride = self.co_primes[function.function_id % len(self.co_primes)]
             chosen = (chosen + stride) % len(self.hosts)
+            update_metric('non-home')
         else:
-            print('all hosts full')
             return False
         target = self.hosts[chosen]
         target.invoke(invocation)
@@ -126,8 +142,9 @@ def main():
 
     invoke_queue = []
     # ticks
-    for epoch in range(15):
-
+    global epoch
+    for e in range(15):
+        epoch = e
         cluster.tick()
         for i in invocations.get(epoch, []):
             invoke_queue.append(i)
@@ -137,12 +154,15 @@ def main():
         while i < len(invoke_queue):
             if cluster.schedule(invoke_queue[i]):
                 invoke_queue.pop(i)
-                continue
-            i += 1
+            else:
+                update_metric('inqueue')
+                i += 1
     
         print('\n======== epoch', epoch, '========')
         print('in queue:', len(invoke_queue))
         cluster.describe()
+
+    dashboard()
 
 if __name__=='__main__':
     main()
