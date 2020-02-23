@@ -114,6 +114,11 @@ class Cluster(object):
                 i += 1
         self.epoch += 1
 
+    def is_idle(self):
+        if not len(self.request_queue) == 0:
+            return False
+        return all([len(h.active_invocations) == 0 for h in self.hosts])
+
     def schedule(self, invocation):
         function = invocation.function
         chosen = function.function_id % len(self.hosts)
