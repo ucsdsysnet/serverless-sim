@@ -16,7 +16,7 @@ metrics = { 'request':[],
 
 stats  =  { 'load':[],
             'inqueue':[],
-            'delay':[]}
+            'average-delay':[]}
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -114,14 +114,21 @@ class Cluster(object):
         for h in self.hosts:
             h.tick()
         i = 0
+        delay_sum = 0
+        invoked = 0
         while i < len(self.request_queue):
             if self.schedule(self.request_queue[i]):
-                stats['delay'].append(self.epoch - self.request_queue[i].requested)
+                invoked += 1
+                delay_sum += self.epoch - self.request_queue[i].requested
                 self.request_queue.pop(i)
             else:
                 i += 1
         stats['inqueue'].append(len(self.request_queue))
         stats['load'].append(self.load)
+        if invoked == 0:
+            stats['average-delay'].append(0.0)
+        else:
+            stats['average-delay'].append(delay_sum / invoked)
 
         self.epoch += 1
 
@@ -161,4 +168,3 @@ class Cluster(object):
         for k, l in metrics.items():
             print(k, '  \t\t', len(l))
         print('average load: \t\t', statistics.mean(stats['load'])/self.capacity)
-        print('average delay:\t\t', statistics.mean(stats['delay']))
