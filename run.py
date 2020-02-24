@@ -58,9 +58,7 @@ def run(seed):
         for i in merged.get(cluster.epoch, []):
             cluster.request(i)
         merged.pop(cluster.epoch, None)
-
         cluster.tick()
-        # cluster.describe()
 
     cluster.dashboard()
     plot.plot(cluster.epoch, metrics, stats, 'seed'+str(seed)+'.png')
