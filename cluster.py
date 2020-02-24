@@ -14,7 +14,8 @@ metrics = { 'invoke':[],
             'non-home':[]}
 
 stats  =  { 'load':[],
-            'inqueue':[]}
+            'inqueue':[],
+            'delay':[]}
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -25,6 +26,7 @@ class Invocation(object):
     def __init__(self, function, duration):
         self.function = function
         self.duration = duration
+        self.requested = 0
 
 class Host(object):
     def __init__(self, host_id, capacity):
@@ -103,6 +105,7 @@ class Cluster(object):
         self.epoch = 0
 
     def request(self, invocation):
+        invocation.requested = self.epoch
         self.request_queue.append(invocation)
 
     def tick(self):
@@ -111,6 +114,7 @@ class Cluster(object):
         i = 0
         while i < len(self.request_queue):
             if self.schedule(self.request_queue[i]):
+                stats['delay'].append(self.epoch - self.request_queue[i].requested)
                 self.request_queue.pop(i)
             else:
                 i += 1
@@ -145,6 +149,7 @@ class Cluster(object):
     def describe(self):
         print('======== epoch', self.epoch, '========')
         print('cluster load :\t\t', self.load/self.capacity)
+        print('waiting: \t\t', len(self.request_queue))
         for h in self.hosts:
             h.describe()
 
@@ -154,3 +159,4 @@ class Cluster(object):
         for k, l in metrics.items():
             print(k, '  \t\t', len(l))
         print('average load: \t\t', statistics.mean(stats['load'])/self.capacity)
+        print('average delay:\t\t', statistics.mean(stats['delay']))
