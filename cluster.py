@@ -2,6 +2,7 @@
 
 import os, sys
 import math
+import statistics
 from collections import OrderedDict
 
 SANDBOX_CAP = 10
@@ -10,13 +11,10 @@ metrics = { 'invoke':[],
             'finish':[],
             'cold-start':[], 
             'evict':[], 
-            'inqueue':[],
             'non-home':[]}
 
-def dashboard():
-    print('\n======== DASHBOARD ========')
-    for k, l in metrics.items():
-        print(k, ':  \t\t', len(l))
+stats  =  { 'load':[],
+            'inqueue':[]}
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -29,12 +27,12 @@ class Invocation(object):
         self.duration = duration
 
 class Host(object):
-    def __init__(self, host_id, host_size):
+    def __init__(self, host_id, capacity):
         self.host_id = host_id
-        self.host_size = host_size
+        self.capacity = capacity
         self.cluster = None
         self.load = 0
-        self.sandboxes = OrderedDict() # function_id -> # of active_invocations, also an LRU
+        self.sandboxes = OrderedDict() # function_id -> # of invocations, also an LRU
         self.invocations = set()
     
     def tick(self):
@@ -67,16 +65,18 @@ class Host(object):
             self.install(function)
         self.invocations.add(invocation)
         self.load += function.demand
+        self.cluster.load += function.demand
         metrics['invoke'].append(self.cluster.epoch)
 
     def finish(self, invocation):
         self.load -= invocation.function.demand
+        self.cluster.load -= invocation.function.demand
         self.sandboxes[invocation.function.function_id] -= 1
         self.invocations.remove(invocation)
         metrics['finish'].append(self.cluster.epoch)
     
     def full(self, function):
-        if self.load + function.demand > self.host_size: # overload
+        if self.load + function.demand > self.capacity: # overload
             return True
         if len(self.sandboxes) < SANDBOX_CAP:
             return False
@@ -91,8 +91,11 @@ class Host(object):
 
 class Cluster(object):
     def __init__(self, hosts):
+        self.capacity = 0
+        self.load = 0
         for h in hosts:
             h.cluster = self
+            self.capacity += h.capacity
         self.hosts = hosts
         n = len(hosts)
         self.co_primes = [k for k in range(2, n) if math.gcd(k, n) == 1]
@@ -110,14 +113,16 @@ class Cluster(object):
             if self.schedule(self.request_queue[i]):
                 self.request_queue.pop(i)
             else:
-                metrics['inqueue'].append(self.epoch)
                 i += 1
+        stats['inqueue'].append(len(self.request_queue))
+        stats['load'].append(self.load)
+
         self.epoch += 1
 
     def is_idle(self):
         if not len(self.request_queue) == 0:
             return False
-        return all([len(h.active_invocations) == 0 for h in self.hosts])
+        return all([len(h.invocations) == 0 for h in self.hosts])
 
     def schedule(self, invocation):
         function = invocation.function
@@ -139,6 +144,13 @@ class Cluster(object):
  
     def describe(self):
         print('======== epoch', self.epoch, '========')
+        print('cluster load :\t\t', self.load/self.capacity)
         for h in self.hosts:
             h.describe()
 
+    def dashboard(self):
+        print('\n======== DASHBOARD ========')
+        print('finish epoch  \t\t', self.epoch)
+        for k, l in metrics.items():
+            print(k, '  \t\t', len(l))
+        print('average load: \t\t', statistics.mean(stats['load'])/self.capacity)
