@@ -3,10 +3,16 @@
 import random
 from cluster import Function, Invocation
 
-def burst_parallel(start, ntasks):
+def burst_parallel(func, start, duration, parallelism):
     invocs = {}
-    f = Function(int(random.random()*65536), 1)
-    invocs[start] = [Invocation(f, 5) for _ in range(ntasks)]
+    invocs[start] = [Invocation(func, duration) for _ in range(parallelism)]
+    return invocs
+
+def burst_parallel_app(func, parallelism, seed=10, start=0, spacing=10, n_bursts=10, duration=5):
+    invocs = {}
+    gen = random.Random(seed)
+    for i in range(n_bursts):
+        invocs = merge_invocs(invocs, burst_parallel(func, int(start+i*spacing), duration, parallelism))
     return invocs
 
 def faas(ntasks):
