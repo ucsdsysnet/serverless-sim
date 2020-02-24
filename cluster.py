@@ -7,7 +7,8 @@ from collections import OrderedDict
 
 SANDBOX_CAP = 10
 
-metrics = { 'invoke':[],
+metrics = { 'request':[],
+            'invoke':[],
             'finish':[],
             'cold-start':[], 
             'evict':[], 
@@ -107,6 +108,7 @@ class Cluster(object):
     def request(self, invocation):
         invocation.requested = self.epoch
         self.request_queue.append(invocation)
+        metrics['request'].append(self.epoch)
 
     def tick(self):
         for h in self.hosts:
