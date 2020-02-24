@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import sys
 import random
 from functools import reduce
 import workloads
-from cluster import Cluster, Host, Function, Invocation
+from cluster import Cluster, Host, Function, Invocation, metrics, stats
+import plot
 
-def main():
+def test():
     # create cluster
     hosts = []
     for i in range(3):
@@ -34,16 +36,17 @@ def main():
         c.tick()
         c.describe()
     c.dashboard()
+    plot.plot(c.epoch, metrics, stats, 'test.png')
 
-def main3():
+def run(seed):
     # create cluster
     hosts = []
-    for i in range(100):
+    for i in range(105):
         hosts.append(Host(i, 4))
     cluster = Cluster(hosts)
 
     # workloads
-    gen = random.Random(123)
+    gen = random.Random(seed)
     loads = []
     for i in range(20): # 20 apps
         func = Function(gen.randint(0, 2**31), 1)
@@ -57,10 +60,10 @@ def main3():
         merged.pop(cluster.epoch, None)
 
         cluster.tick()
-        cluster.describe()
+        # cluster.describe()
 
     cluster.dashboard()
+    plot.plot(cluster.epoch, metrics, stats, 'seed'+str(seed)+'.png')
 
-
-if __name__=='__main__':
-    main3()
+if __name__ == '__main__':
+    run(sys.argv[1])

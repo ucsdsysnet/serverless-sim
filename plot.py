@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot(epoch, metrics, stats):
+def plot(epoch, metrics, stats, filename):
     fig, axs = plt.subplots(7, sharex=False, sharey=False, figsize=(6, 15))
     x = range(0, epoch)
     # request
@@ -28,4 +28,4 @@ def plot(epoch, metrics, stats):
     axs[6].bar(x, stats['average-delay'], 1, facecolor='k', alpha=0.75)
 
     fig.tight_layout()
-    fig.savefig('save.png')
+    fig.savefig(filename)
