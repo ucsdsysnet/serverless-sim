@@ -5,7 +5,7 @@ import math
 import statistics
 from collections import OrderedDict
 
-SANDBOX_CAP = 10
+SANDBOX_CAP = 50
 
 metrics = { 'request':[],
             'invoke':[],
@@ -139,6 +139,9 @@ class Cluster(object):
 
     def schedule(self, invocation):
         function = invocation.function
+        # fast path
+        if self.load + function.demand > self.capacity:
+            return False
         chosen = function.function_id % len(self.hosts)
         stride = self.co_primes[function.function_id % len(self.co_primes)]
         remaining = len(self.hosts)
@@ -146,7 +149,6 @@ class Cluster(object):
             if not self.hosts[chosen].full(function):
                 break
             remaining -= 1
-            stride = self.co_primes[function.function_id % len(self.co_primes)]
             chosen = (chosen + stride) % len(self.hosts)
             metrics['non-home'].append(self.epoch)
         else:
@@ -163,8 +165,9 @@ class Cluster(object):
             h.describe()
 
     def dashboard(self):
-        print('\n======== DASHBOARD ========')
-        print('finish epoch  \t\t', self.epoch)
+        ret = '======== DASHBOARD ========\n'
+        ret += 'finish epoch  \t\t {0}\n'.format(self.epoch)
         for k, l in metrics.items():
-            print(k, '  \t\t', len(l))
-        print('average load: \t\t', statistics.mean(stats['load'])/self.capacity)
+            ret += '{0}  \t\t {1}\n'.format(k, len(l))
+        ret += 'average load: \t\t {0}\n'.format(statistics.mean(stats['load'])/self.capacity)
+        return ret

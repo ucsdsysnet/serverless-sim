@@ -41,16 +41,20 @@ def test():
 def run(seed):
     # create cluster
     hosts = []
-    for i in range(105):
-        hosts.append(Host(i, 4))
+    # for i in range(1250):
+    #     hosts.append(Host(i, 48))
+    # for i in range(1250):
+    #     hosts.append(Host(i, 16))
+    for i in range(2500):
+        hosts.append(Host(i, 32))    
     cluster = Cluster(hosts)
 
     # workloads
     gen = random.Random(seed)
     loads = []
-    for i in range(20): # 20 apps
+    for i in range(9000): # apps 8000, 9000
         func = Function(gen.randint(0, 2**31), 1)
-        loads.append(workloads.burst_parallel_app(func, 100, start=gen.randint(0, 300)))
+        loads.append(workloads.burst_parallel_app(func, 100, 0, 600, gen, 10, 5))
     merged = reduce(workloads.merge_invocs, loads)
 
     # ticks
@@ -59,9 +63,48 @@ def run(seed):
             cluster.request(i)
         merged.pop(cluster.epoch, None)
         cluster.tick()
+        print('epoch:', cluster.epoch, file=sys.stderr)
 
-    cluster.dashboard()
-    plot.plot(cluster.epoch, metrics, stats, 'seed'+str(seed)+'.png')
+    name = 'seed'+str(seed)+'homo-overload'
+    dash = cluster.dashboard()
+    with open(name, 'w') as f:
+        f.write(dash)
+    plot.plot(cluster.epoch, metrics, stats, name+'.png')
+
+def run_mixed(seed):
+    # create cluster
+    hosts = []
+    for i in range(2500):
+        hosts.append(Host(i, 32))    
+    cluster = Cluster(hosts)
+
+    # workloads
+    gen = random.Random(seed)
+    loads = []
+    for i in range(5000): # apps
+        func = Function(gen.randint(0, 2**31), 1)
+        loads.append(workloads.burst_parallel_app(func, 100, 0, 600, gen, 10, 5))
+
+    for i in range(2000): # some larger apps
+        func = Function(gen.randint(0, 2**31), 20)
+        loads.append(workloads.burst_parallel_app(func, 1, 0, 600, gen, 10, 50))
+
+    merged = reduce(workloads.merge_invocs, loads)
+
+    # ticks
+    while len(merged) > 0 or not cluster.is_idle():
+        for i in merged.get(cluster.epoch, []):
+            cluster.request(i)
+        merged.pop(cluster.epoch, None)
+        cluster.tick()
+        print('epoch:', cluster.epoch, file=sys.stderr)
+
+    name = 'seed'+str(seed)+'homo-mix-overload'
+    dash = cluster.dashboard()
+    with open(name, 'w') as f:
+        f.write(dash)
+    plot.plot(cluster.epoch, metrics, stats, name+'.png')
+
 
 if __name__ == '__main__':
-    run(sys.argv[1])
+    run_mixed(sys.argv[1])
