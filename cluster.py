@@ -6,13 +6,15 @@ import statistics
 from collections import OrderedDict
 
 SANDBOX_CAP = 50
+INSTALL_TIME = 3
 
 metrics = { 'request':[],
-            'invoke':[],
+            'start':[],
             'finish':[],
             'cold-start':[], 
             'evict':[], 
-            'non-home':[]}
+            'non-home':[],
+            'current-delays':[]}
 
 stats  =  { 'load':[],
             'inqueue':[],
@@ -28,6 +30,15 @@ class Invocation(object):
         self.function = function
         self.duration = duration
         self.requested = 0
+        self.started = 0
+
+class Sandbox(object):
+    def __init__(self, host, function):
+        self.host = host
+        self.function = function
+        self.state = 'installing' # installing, idle, active
+        self.time_to_install = INSTALL_TIME
+        self.invocations = set()
 
 class Host(object):
     def __init__(self, host_id, capacity):
@@ -35,56 +46,80 @@ class Host(object):
         self.capacity = capacity
         self.cluster = None
         self.load = 0
-        self.sandboxes = OrderedDict() # function_id -> # of invocations, also an LRU
+        self.sandboxes = OrderedDict() # function_id -> Sandbox, also an LRU
         self.invocations = set()
     
     def tick(self):
         for i in list(self.invocations):
-            i.duration -= 1
-            if i.duration <= 0:
-                self.finish(i)
+            if i.started:
+                i.duration -= 1
+                if i.duration <= 0:
+                    self.finish(i)
+
+        for sb in self.sandboxes.values():
+            if sb.time_to_install > 0:
+                sb.time_to_install -= 1
+                if sb.time_to_install == 0:
+                    for i in sb.invocations:
+                        self.start(i)
 
     def install(self, function):
-        self.sandboxes[function.function_id] = 1
+        self.sandboxes[function.function_id] = Sandbox(self, function)
         metrics['cold-start'].append(self.cluster.epoch)
 
     def evict(self):
-        for k, v in list(self.sandboxes.items()):
-            if v == 0:
+        for k, sb in list(self.sandboxes.items()):
+            if sb.state == 'idle':
                 self.sandboxes.pop(k)
                 break
         else:
             raise RuntimeError('cannot evict any sandbox')
         metrics['evict'].append(self.cluster.epoch)
 
+    def start(self, invocation):
+        invocation.started = self.cluster.epoch
+        metrics['current-delays'].append(invocation.started - invocation.requested)
+        self.sandboxes[invocation.function.function_id].state = 'active'
+        metrics['start'].append(self.cluster.epoch)
+
     def invoke(self, invocation):
         function = invocation.function
+        self.invocations.add(invocation)
+        self.load += function.demand
+        self.cluster.load += function.demand
+
         if function.function_id in self.sandboxes: # warm start
+            sb = self.sandboxes[function.function_id]
             self.sandboxes.move_to_end(function.function_id) # update LRU
-            self.sandboxes[function.function_id] += 1 # update count
+            sb.invocations.add(invocation)
+            if sb.state != 'installing': # sandbox ready
+                self.start(invocation)
+
         else: # cold start
             if len(self.sandboxes) >= SANDBOX_CAP:
                 self.evict() # evict
             self.install(function)
-        self.invocations.add(invocation)
-        self.load += function.demand
-        self.cluster.load += function.demand
-        metrics['invoke'].append(self.cluster.epoch)
+            self.sandboxes[function.function_id].invocations.add(invocation)
 
     def finish(self, invocation):
         self.load -= invocation.function.demand
         self.cluster.load -= invocation.function.demand
-        self.sandboxes[invocation.function.function_id] -= 1
+        sb = self.sandboxes[invocation.function.function_id]
+        sb.invocations.remove(invocation)
+        if len(sb.invocations) == 0:
+            sb.state = 'idle'
         self.invocations.remove(invocation)
         metrics['finish'].append(self.cluster.epoch)
     
     def full(self, function):
         if self.load + function.demand > self.capacity: # overload
             return True
+        if function.function_id in self.sandboxes:
+            return False
         if len(self.sandboxes) < SANDBOX_CAP:
             return False
-        for v in self.sandboxes.values():
-            if v == 0: # has an evictable sandbox
+        for sb in self.sandboxes.values():
+            if sb.state == 'idle': # has an evictable sandbox
                 return False
         else:
             return True
@@ -114,22 +149,18 @@ class Cluster(object):
         for h in self.hosts:
             h.tick()
         i = 0
-        delay_sum = 0
-        invoked = 0
         while i < len(self.request_queue):
             if self.schedule(self.request_queue[i]):
-                invoked += 1
-                delay_sum += self.epoch - self.request_queue[i].requested
                 self.request_queue.pop(i)
             else:
                 i += 1
         stats['inqueue'].append(len(self.request_queue))
         stats['load'].append(self.load)
-        if invoked == 0:
+        if len(metrics['current-delays']) == 0:
             stats['average-delay'].append(0.0)
         else:
-            stats['average-delay'].append(delay_sum / invoked)
-
+            stats['average-delay'].append(sum(metrics['current-delays']) / len(metrics['current-delays']))
+        metrics['current-delays'] = list()
         self.epoch += 1
 
     def is_idle(self):
@@ -139,7 +170,7 @@ class Cluster(object):
 
     def schedule(self, invocation):
         function = invocation.function
-        # fast path
+        # overload fast path
         if self.load + function.demand > self.capacity:
             return False
         chosen = function.function_id % len(self.hosts)
