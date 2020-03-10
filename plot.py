@@ -3,14 +3,14 @@ import numpy as np
 
 
 def plot(epoch, metrics, stats, filename):
-    fig, axs = plt.subplots(7, sharex=False, sharey=False, figsize=(6, 15))
-    x = range(0, epoch)
+    fig, axs = plt.subplots(7, sharex=True, sharey=False, figsize=(6, 15))
+    x = np.arange(0.5, epoch)
     # request
     axs[0].title.set_text('request')
     axs[0].hist(metrics['request'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)
-    # invoke
+    # start
     axs[1].title.set_text('start')
-    axs[1].hist(metrics['invoke'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)
+    axs[1].hist(metrics['start'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)
     # running
     axs[2].title.set_text('load')
     axs[2].bar(x, stats['load'], 1, facecolor='k', alpha=0.75)
