@@ -6,6 +6,7 @@ import statistics
 from collections import OrderedDict
 
 SANDBOX_CAP = 50
+INVOCATIONS_CAP_PER_SB = 8
 INSTALL_TIME = 3
 
 metrics = { 'request':[],
@@ -118,7 +119,7 @@ class Host(object):
         if self.load + function.demand > self.capacity: # overload
             return True
         if function.function_id in self.sandboxes:
-            return False
+            return len(self.sandboxes[function.function_id].invocations) >= INVOCATIONS_CAP_PER_SB # consider full if too many invocations on SB already
         if len(self.sandboxes) < SANDBOX_CAP:
             return False
         for sb in self.sandboxes.values():
