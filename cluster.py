@@ -13,12 +13,15 @@ metrics = { 'request':[],
             'finish':[],
             'cold-start':[], 
             'evict':[], 
-            'non-home':[],
-            'current-delays':[]}
+            'non-home':[]}
 
 stats  =  { 'load':[],
             'inqueue':[],
-            'average-delay':[]}
+            'delay':[],
+            'distance':[]}
+
+temp_stats = {  'delay':[],
+                'distance':[]}
 
 class Function(object):
     def __init__(self, function_id, demand):
@@ -78,7 +81,7 @@ class Host(object):
 
     def start(self, invocation):
         invocation.started = self.cluster.epoch
-        metrics['current-delays'].append(invocation.started - invocation.requested)
+        temp_stats['delay'].append(invocation.started - invocation.requested)
         self.sandboxes[invocation.function.function_id].state = 'active'
         metrics['start'].append(self.cluster.epoch)
 
@@ -155,13 +158,15 @@ class Cluster(object):
             else:
                 i += 1
         stats['inqueue'].append(len(self.request_queue))
-        stats['load'].append(self.load)
-        if len(metrics['current-delays']) == 0:
-            stats['average-delay'].append(0.0)
-        else:
-            stats['average-delay'].append(sum(metrics['current-delays']) / len(metrics['current-delays']))
-        metrics['current-delays'] = list()
-        self.epoch += 1
+        stats['load'].append(self.load / self.capacity)
+        for k, v in temp_stats.items():
+            if len(v) == 0:
+                stats[k].append(0.0)
+            else:
+                stats[k].append(sum(v) / len(v))
+            temp_stats[k] = list()
+
+        self.epoch += 1 # tick
 
     def is_idle(self):
         if not len(self.request_queue) == 0:
@@ -181,11 +186,13 @@ class Cluster(object):
                 break
             remaining -= 1
             chosen = (chosen + stride) % len(self.hosts)
-            metrics['non-home'].append(self.epoch)
         else:
             return False
         target = self.hosts[chosen]
         target.invoke(invocation)
+        temp_stats['distance'].append(len(self.hosts) - remaining)
+        if remaining < len(self.hosts):
+            metrics['non-home'].append(self.epoch)
         return True
  
     def describe(self):
@@ -200,5 +207,5 @@ class Cluster(object):
         ret += 'finish epoch  \t\t {0}\n'.format(self.epoch)
         for k, l in metrics.items():
             ret += '{0}  \t\t {1}\n'.format(k, len(l))
-        ret += 'average load: \t\t {0}\n'.format(statistics.mean(stats['load'])/self.capacity)
+        ret += 'average load: \t\t {0}\n'.format(statistics.mean(stats['load']))
         return ret
