@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 import os, sys
-import math
+import math, random
 import statistics
 from collections import OrderedDict
 
-SANDBOX_CAP = 50
-INVOCATIONS_CAP_PER_SB = 8
+SANDBOX_CAP = 500
+INVOCATIONS_CAP_PER_HOST = 500
 INSTALL_TIME = 3
 
 metrics = { 'request':[],
@@ -42,7 +42,7 @@ class Sandbox(object):
         self.function = function
         self.state = 'installing' # installing, idle, active
         self.time_to_install = INSTALL_TIME
-        self.invocations = set()
+        self.invocation = None
 
 class Host(object):
     def __init__(self, host_id, capacity):
@@ -50,83 +50,92 @@ class Host(object):
         self.capacity = capacity
         self.cluster = None
         self.load = 0
-        self.sandboxes = OrderedDict() # function_id -> Sandbox, also an LRU
+        self.sb_load = 0
+        self.sandboxes = list() # LRU
         self.invocations = set()
     
     def tick(self):
-        for i in list(self.invocations):
-            if i.started:
-                i.duration -= 1
-                if i.duration <= 0:
-                    self.finish(i)
+        # for i in list(self.invocations):
+        #     if i.started:
+        #         i.duration -= 1
+        #         if i.duration <= 0:
+        #             self.finish(i)
 
-        for sb in self.sandboxes.values():
+        for sb in self.sandboxes:
+            if sb.state == 'active':
+                sb.invocation.duration -= 1
+                if sb.invocation.duration <= 0:
+                    self.finish(sb)
+
             if sb.time_to_install > 0:
                 sb.time_to_install -= 1
                 if sb.time_to_install == 0:
-                    for i in sb.invocations:
-                        self.start(i)
+                    self.start(sb)
 
-    def install(self, function):
-        self.sandboxes[function.function_id] = Sandbox(self, function)
+    def install(self, invocation):
+        sb = Sandbox(self, invocation.function)
+        sb.invocation = invocation
+        self.sandboxes.append(sb)
         metrics['cold-start'].append(self.cluster.epoch)
 
-    def evict(self):
-        for k, sb in list(self.sandboxes.items()):
-            if sb.state == 'idle':
-                self.sandboxes.pop(k)
-                break
+    def evict(self, load2evict):
+        i = 0
+        while i < len(self.sandboxes):
+            if self.sandboxes[i].state == 'idle':
+                released_load = self.sandboxes.pop(i).function.demand
+                self.sb_load -= released_load
+                load2evict -= released_load
+                metrics['evict'].append(self.cluster.epoch)
+                if load2evict <= 0:
+                    break
+            else:
+                i += 1
         else:
-            raise RuntimeError('cannot evict any sandbox')
-        metrics['evict'].append(self.cluster.epoch)
+            raise RuntimeError('cannot evict enough sandbox load')
 
-    def start(self, invocation):
+    def start(self, sb):
+        invocation = sb.invocation
         invocation.started = self.cluster.epoch
+        sb.state = 'active'
+        self.sandboxes.remove(sb)
+        self.sandboxes.append(sb) # update LRU
         temp_stats['delay'].append(invocation.started - invocation.requested)
-        self.sandboxes[invocation.function.function_id].state = 'active'
         metrics['start'].append(self.cluster.epoch)
 
     def invoke(self, invocation):
         function = invocation.function
+        function_id = function.function_id
         self.invocations.add(invocation)
         self.load += function.demand
         self.cluster.load += function.demand
 
-        if function.function_id in self.sandboxes: # warm start
-            sb = self.sandboxes[function.function_id]
-            self.sandboxes.move_to_end(function.function_id) # update LRU
-            sb.invocations.add(invocation)
-            if sb.state != 'installing': # sandbox ready
-                self.start(invocation)
+        available_sb = [sb for sb in self.sandboxes if sb.function.function_id == function_id and sb.state == 'idle']
+        if len(available_sb) > 0: # warm start
+            chosen_sb = random.choice(available_sb) # OW currently randomly chooses warm sb
+            chosen_sb.invocation = invocation
+            self.start(chosen_sb)
+            self.sb_load -= function.demand
 
         else: # cold start
-            if len(self.sandboxes) >= SANDBOX_CAP:
-                self.evict() # evict
-            self.install(function)
-            self.sandboxes[function.function_id].invocations.add(invocation)
+            if self.load + self.sb_load > self.capacity:
+                self.evict(self.load + self.sb_load - self.capacity) # evict
+            self.install(invocation)
 
-    def finish(self, invocation):
+    def finish(self, sb):
+        invocation = sb.invocation
         self.load -= invocation.function.demand
         self.cluster.load -= invocation.function.demand
-        sb = self.sandboxes[invocation.function.function_id]
-        sb.invocations.remove(invocation)
-        if len(sb.invocations) == 0:
-            sb.state = 'idle'
+        self.sb_load += invocation.function.demand
+        sb.invocation = None
+        sb.state = 'idle'
         self.invocations.remove(invocation)
         metrics['finish'].append(self.cluster.epoch)
     
     def full(self, function):
         if self.load + function.demand > self.capacity: # overload
             return True
-        if function.function_id in self.sandboxes:
-            return len(self.sandboxes[function.function_id].invocations) >= INVOCATIONS_CAP_PER_SB # consider full if too many invocations on SB already
-        if len(self.sandboxes) < SANDBOX_CAP:
-            return False
-        for sb in self.sandboxes.values():
-            if sb.state == 'idle': # has an evictable sandbox
-                return False
-        else:
-            return True
+        return len([sb for sb in self.sandboxes if sb.function.function_id == function.function_id and
+            sb.state == 'active']) >= INVOCATIONS_CAP_PER_HOST # consider full for the function if too many invocations on host already
     
     def describe(self):
         print('host: ', self.host_id, 'running:', len(self.invocations),'utilization:', self.load, 'sandboxes:', len(self.sandboxes))
@@ -195,7 +204,7 @@ class Cluster(object):
         if remaining < len(self.hosts):
             metrics['non-home'].append(self.epoch)
         return True
- 
+
     def describe(self):
         print('======== epoch', self.epoch, '========')
         print('cluster load :\t\t', self.load/self.capacity)
