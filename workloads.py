@@ -42,16 +42,42 @@ def azure(gen, span, n_functions, n_invocations):
     # allocate CVs of IAT for each function
     CVs = []
     for _ in range(n_functions):
-        CVs.append(0) # TODO: use CV distribution, using random.choice(), make sure in [0, 10]
+        CVs.append(1) # TODO: use CV distribution, using random.choice(), make sure in [0, 10]
 
-    # create invocations using counts and CVs, use lognormal distribution for inter-arrival time
+    # create {Tn} using counts and CVs, use lognormal distribution for inter-arrival time
     invocs = {} # invocs w/ timestamps
     for i in range(n_functions):
         if invocation_count[i] == 0: break
+        if invocation_count[i] >= 300 and invocation_count[i] < 3000 and gen.random() < 0.5: # assume half of these are burst-parallel apps
+            # calculate A2, A3
+            step = span // 3
+            startpoint = gen.randint(0, step)
+            batch1 = []
+            batch2 = []
+            batch3 = []
+            for _ in range(int(invocation_count[i]/3)):
+                dur = 2 # TODO: use distribution
+                batch1.append(Invocation(fns[i], dur))
+                batch2.append(Invocation(fns[i], dur))
+                batch3.append(Invocation(fns[i], dur))
+            existing_list = invocs.get(startpoint, list())
+            existing_list += batch1
+            invocs[startpoint] = existing_list
+            existing_list = invocs.get(startpoint+step, list())
+            existing_list += batch2
+            invocs[startpoint+step] = existing_list
+            existing_list = invocs.get(startpoint+step*2, list())
+            existing_list += batch3
+            invocs[startpoint+step*2] = existing_list
+            print('bursty app of', invocation_count[i], 'invocations')
+            continue
+        # normal apps
         sigma = math.sqrt(math.log(CVs[i] ** 2 + 1))
         mean = span / invocation_count[i] # inter-arrival time expectation
         mu = math.log(mean) - sigma ** 2 / 2
         current_ts = 0.0 # start point
+
+        # create IAT sequence {An}, then calculate {Tn}
         # for _ in range(invocation_count[i]):
         while True:
             interval = gen.lognormvariate(mu, sigma)
