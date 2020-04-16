@@ -3,7 +3,7 @@
 import os, sys
 import math, random
 import statistics
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 SANDBOX_CAP = 500
 INVOCATIONS_CAP_PER_HOST = 500
@@ -55,13 +55,7 @@ class Host(object):
         self.invocations = set()
     
     def tick(self):
-        # for i in list(self.invocations):
-        #     if i.started:
-        #         i.duration -= 1
-        #         if i.duration <= 0:
-        #             self.finish(i)
-
-        for sb in self.sandboxes:
+        for sb in list(self.sandboxes): # be sure to use a copy of list because self.sandboxes changes in iteration
             if sb.state == 'active':
                 sb.invocation.duration -= 1
                 if sb.invocation.duration <= 0:
@@ -150,7 +144,7 @@ class Cluster(object):
         self.hosts = hosts
         n = len(hosts)
         self.co_primes = [k for k in range(2, n) if math.gcd(k, n) == 1]
-        self.request_queue = []
+        self.request_queue = deque()
         self.epoch = 0
 
     def request(self, invocation):
@@ -161,13 +155,13 @@ class Cluster(object):
     def tick(self):
         for h in self.hosts:
             h.tick()
-        i = 0
-        while i < len(self.request_queue):
-            if self.schedule(self.request_queue[i]):
-                self.request_queue.pop(i)
-            else:
-                i += 1
-        stats['inqueue'].append(len(self.request_queue))
+        remaining_queue = deque()
+        while len(self.request_queue) > 0:
+            req = self.request_queue.popleft()
+            if not self.schedule(req):
+                remaining_queue.append(req)
+        self.request_queue = remaining_queue
+        stats['inqueue'].append(len(remaining_queue))
         stats['load'].append(self.load / self.capacity)
         for k, v in temp_stats.items():
             if len(v) == 0:
