@@ -6,8 +6,8 @@ import statistics
 from collections import OrderedDict, deque
 
 SANDBOX_CAP = 500
-INVOCATIONS_CAP_PER_HOST = 500
-INSTALL_TIME = 3
+INVOCATIONS_CAP_PER_HOST = 1600
+INSTALL_TIME = 2
 
 metrics = { 'request':[],
             'start':[],
