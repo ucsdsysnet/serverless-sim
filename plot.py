@@ -8,8 +8,8 @@ def plot(epoch, metrics, stats, filename):
     x = np.arange(0.5, epoch)
     current = 0
     # request
-    axs[0][0].title.set_text('request')
     axs[0][0].hist(metrics['request'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)
+    axs[0][0].title.set_text('request: total '+str(len(metrics['request'])))
 
     # fig.tight_layout()
     # fig.savefig(filename)
@@ -32,12 +32,12 @@ def plot(epoch, metrics, stats, filename):
     axs[2][0].bar(x, stats['inqueue'], 1, facecolor='k', alpha=0.75)
     # cold start
     current += 1
-    axs[2][1].title.set_text('cold-start')
     axs[2][1].hist(metrics['cold-start'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)    
+    axs[2][1].title.set_text('cold-start: total '+str(len(metrics['cold-start'])))
     # evict
     current += 1
-    axs[3][0].title.set_text('evict')
     axs[3][0].hist(metrics['evict'], bins=epoch+1, range=(0, epoch+1), density=False, facecolor='k', alpha=0.75)
+    axs[3][0].title.set_text('evict: total '+str(len(metrics['evict'])))
     # delay
     current += 1
     axs[3][1].bar(x, stats['delay'], 1, facecolor='k', alpha=0.75)
@@ -53,5 +53,5 @@ def plot(epoch, metrics, stats, filename):
     axs[4][1].title.set_text('average distance: '+('%.2f'%mean(stats['distance']))+'±'+('%.2f'%stdev(stats['distance'])))
 
     fig.tight_layout()
-    plt.show()
-    # fig.savefig(filename)
+    # plt.show()
+    fig.savefig(filename)

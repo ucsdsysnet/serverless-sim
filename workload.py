@@ -24,38 +24,50 @@ Knobs:
     - number of functions (possibly not all functions have invocations)
     - number of invocations (possibly less than this number)
 """
-def azure(gen, span, n_functions, n_invocations):
-    INVOC_MU = -7.85
-    INVOC_SIGMA = 2.75
+def azure(gen, span, n_functions, n_invocations, dist_mu, dist_sigma, CV, start_window, start_load, BP_percentage, **kwargs):
+    dist_mu = -7.85
+    dist_sigma = 2.75
     # create functions
     fns = [Function(i, 1) for i in range(n_functions)] # TODO: use memory distribution as "demand"
-    invocation_count = [0] * n_functions # fn -> invocations of that fn
+    function_dist = [0] * n_functions # fn -> invocations of that fn
 
     # allocate invocations to functions
     created = 0
     while created < n_invocations:
-        fnid = int(gen.lognormvariate(INVOC_MU, INVOC_SIGMA) * n_functions)
+        fnid = int(gen.lognormvariate(dist_mu, dist_sigma) * n_functions)
         if fnid < n_functions:
-            invocation_count[fnid] += 1
+            function_dist[fnid] += 1
             created += 1
 
     # allocate CVs of IAT for each function
     CVs = []
     for _ in range(n_functions):
         CVs.append(1) # TODO: use CV distribution, using random.choice(), make sure in [0, 10]
+    
+    # distribution function
+    def dist_func(x):
+        # if x >= 0.2 and x < 0.3:
+        #     return 7.5 * x - 1.25
+        # else:
+        #     return 1
+        if x >= start_window:
+            return 1
+        else:
+            return start_load + x * (1 - start_load) / start_window
 
-    # create {Tn} using counts and CVs, use lognormal distribution for inter-arrival time
+    # create {Tn} using function_dist and CVs, use lognormal distribution for inter-arrival time
     invocs = {} # invocs w/ timestamps
     for i in range(n_functions):
-        if invocation_count[i] == 0: break
-        if invocation_count[i] >= 300 and invocation_count[i] < 3000 and gen.random() < 0.5: # assume half of these are burst-parallel apps
+        new_invocs = {}
+        if function_dist[i] == 0: break
+        if function_dist[i] >= 300 and function_dist[i] < 3000 and gen.random() < BP_percentage: # assume half of these are burst-parallel apps
             # calculate A2, A3
             step = span // 3
             startpoint = gen.randint(0, step)
             batch1 = []
             batch2 = []
             batch3 = []
-            for _ in range(int(invocation_count[i]/3)):
+            for _ in range(int(function_dist[i]/3)):
                 dur = 2 # TODO: use distribution
                 batch1.append(Invocation(fns[i], dur))
                 batch2.append(Invocation(fns[i], dur))
@@ -69,27 +81,29 @@ def azure(gen, span, n_functions, n_invocations):
             existing_list = invocs.get(startpoint+step*2, list())
             existing_list += batch3
             invocs[startpoint+step*2] = existing_list
-            print('bursty app of', invocation_count[i], 'invocations')
+            print('bursty app of', function_dist[i], 'invocations')
             continue
         # normal apps
         sigma = math.sqrt(math.log(CVs[i] ** 2 + 1))
-        mean = span / invocation_count[i] # inter-arrival time expectation
+        mean = span / function_dist[i] # inter-arrival time expectation
         mu = math.log(mean) - sigma ** 2 / 2
         current_ts = 0.0 # start point
 
         # create IAT sequence {An}, then calculate {Tn}
-        # for _ in range(invocation_count[i]):
         while True:
             interval = gen.lognormvariate(mu, sigma)
+            interval = interval / dist_func(current_ts / span) # reshape by dist function
             current_ts += interval
             ts = round(current_ts)
             if ts >= span: break # will have more or less invocations
             # duration
             dur = 2 # TODO: use duration distribution
             invoc = Invocation(fns[i], dur)
-            existing_list = invocs.get(ts, list())
+            existing_list = new_invocs.get(ts, list())
             existing_list.append(invoc)
-            invocs[ts] = existing_list
+            new_invocs[ts] = existing_list
+
+        invocs = merge_invocs(invocs, new_invocs)
 
     return invocs
 

@@ -1,0 +1,23 @@
+{
+    "seed": 12345,
+    "workloads": {
+        "type": "azure",
+        "parameters": {
+            "span": 60,
+            "n_functions": 10000,
+            "n_invocations": 300000,
+            "dist_mu": -7.85,
+            "dist_sigma": 2.75,
+            "CV": 1,
+            "start_window": 0.0,
+            "start_load": 0.25,
+            "BP_percentage": 0.5
+        }
+    },
+    "resources": [
+        {
+            "amount": 1000,
+            "capacity": 32
+        }
+    ]
+}
