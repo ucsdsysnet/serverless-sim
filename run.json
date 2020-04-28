@@ -17,7 +17,11 @@
     "resources": [
         {
             "amount": 1000,
-            "capacity": 32
+            "configs": {
+                "capacity": 32,
+                "invocation_per_host_cap": 1000,
+                "install_time": 2
+            }
         }
     ]
 }

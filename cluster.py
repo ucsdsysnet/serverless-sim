@@ -5,10 +5,6 @@ import math, random
 import statistics
 from collections import OrderedDict, deque
 
-SANDBOX_CAP = 500
-INVOCATIONS_CAP_PER_HOST = 1600
-INSTALL_TIME = 2
-
 metrics = { 'request':[],
             'start':[],
             'finish':[],
@@ -37,17 +33,19 @@ class Invocation(object):
         self.started = 0
 
 class Sandbox(object):
-    def __init__(self, host, function):
+    def __init__(self, host, function, install_time):
         self.host = host
         self.function = function
+        self.time_to_install = install_time
         self.state = 'installing' # installing, idle, active
-        self.time_to_install = INSTALL_TIME
         self.invocation = None
 
 class Host(object):
-    def __init__(self, host_id, capacity):
+    def __init__(self, host_id, configs):
         self.host_id = host_id
-        self.capacity = capacity
+        self.capacity = configs['capacity']
+        self.invocation_per_host_cap = configs['invocation_per_host_cap']
+        self.install_time = configs['install_time']
         self.cluster = None
         self.load = 0
         self.sb_load = 0
@@ -67,7 +65,7 @@ class Host(object):
                     self.start(sb)
 
     def install(self, invocation):
-        sb = Sandbox(self, invocation.function)
+        sb = Sandbox(self, invocation.function, self.install_time)
         sb.invocation = invocation
         self.sandboxes.append(sb)
         metrics['cold-start'].append(self.cluster.epoch)
@@ -129,7 +127,7 @@ class Host(object):
         if self.load + function.demand > self.capacity: # overload
             return True
         return len([sb for sb in self.sandboxes if sb.function.function_id == function.function_id and
-            sb.state == 'active']) >= INVOCATIONS_CAP_PER_HOST # consider full for the function if too many invocations on host already
+            sb.state == 'active']) >= self.invocation_per_host_cap # consider full for the function if too many invocations on host already
     
     def describe(self):
         print('host: ', self.host_id, 'running:', len(self.invocations),'utilization:', self.load, 'sandboxes:', len(self.sandboxes))

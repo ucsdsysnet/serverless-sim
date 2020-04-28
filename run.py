@@ -20,7 +20,7 @@ def main(digest, seed, workloads, resources, **kwargs):
     i = 0
     for r in resources:
         for _ in range(r['amount']):
-            hosts.append(Host(i, r['capacity']))
+            hosts.append(Host(i, r['configs']))
             i += 1
     cluster = Cluster(hosts)
 
