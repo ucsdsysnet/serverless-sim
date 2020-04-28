@@ -36,14 +36,17 @@ def main(seed, workloads, hosts, cluster, **kwargs):
 
 if __name__ == '__main__':
     params = json.load(sys.stdin)
-    digest = hashlib.md5(json.dumps(params).encode('utf-8')).hexdigest()
+    if len(sys.argv) == 2:
+        run_id = sys.argv[1]
+    else:
+        run_id = hashlib.md5(json.dumps(params).encode('utf-8')).hexdigest()
 
     try:
         os.mkdir('runs')
     except FileExistsError:
         pass
-    with open('runs/' + digest + '.json', 'w') as f:
+    with open('runs/' + run_id + '.json', 'w') as f:
         json.dump(params, f)
 
-    plot.plot(*main(**params), 'runs/' + digest + '.pdf')
-    print('finished. digest:', digest, file=sys.stderr)
+    plot.plot(*main(**params), 'runs/' + run_id + '.pdf')
+    print('finished. run_id:', run_id, file=sys.stderr)
