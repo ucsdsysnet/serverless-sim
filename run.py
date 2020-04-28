@@ -1,38 +1,38 @@
 #!/usr/bin/env python3
 
 import sys, os
-import random
 from functools import reduce
 import json
 import hashlib
 
+from common import init_gen
 from cluster import Cluster, Host, Function, Invocation, metrics, stats
 import workload
 import plot
 
-def main(digest, seed, workloads, resources, **kwargs):
-    gen = random.Random(seed)
+def main(seed, workloads, hosts, cluster, **kwargs):
+    init_gen(seed)
 
     wl_gen = getattr(workload, workloads['type'])
-    wl = wl_gen(gen, **workloads['parameters'])
+    wl = wl_gen(**workloads['parameters'])
 
-    hosts = []
+    host_list = []
     i = 0
-    for r in resources:
-        for _ in range(r['amount']):
-            hosts.append(Host(i, r['configs']))
+    for host_type in hosts:
+        for _ in range(host_type['amount']):
+            host_list.append(Host(i, host_type['configs']))
             i += 1
-    cluster = Cluster(hosts)
+    clstr = Cluster(host_list, cluster['configs'])
 
     # ticks
-    while len(wl) > 0 or not cluster.is_idle():
-        for i in wl.get(cluster.epoch, []):
-            cluster.request(i)
-        wl.pop(cluster.epoch, None)
-        cluster.tick()
-        print('epoch:', cluster.epoch, file=sys.stderr)
+    while len(wl) > 0 or not clstr.is_idle():
+        for i in wl.get(clstr.epoch, []):
+            clstr.request(i)
+        wl.pop(clstr.epoch, None)
+        clstr.tick()
+        print('epoch:', clstr.epoch, file=sys.stderr)
 
-    return cluster.epoch, metrics, stats
+    return clstr.epoch, metrics, stats
 
 if __name__ == '__main__':
     params = json.load(sys.stdin)
@@ -45,5 +45,5 @@ if __name__ == '__main__':
     with open('runs/' + digest + '.json', 'w') as f:
         json.dump(params, f)
 
-    plot.plot(*main(digest, **params), 'runs/' + digest + '.pdf')
+    plot.plot(*main(**params), 'runs/' + digest + '.pdf')
     print('finished. digest:', digest, file=sys.stderr)

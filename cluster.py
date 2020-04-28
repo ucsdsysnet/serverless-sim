@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import os, sys
-import math, random
+import math
 import statistics
 from collections import OrderedDict, deque
+import common
 
 metrics = { 'request':[],
             'start':[],
@@ -51,6 +52,7 @@ class Host(object):
         self.sb_load = 0
         self.sandboxes = list() # LRU
         self.invocations = set()
+        self.request_queue = deque()
     
     def tick(self):
         for sb in list(self.sandboxes): # be sure to use a copy of list because self.sandboxes changes in iteration
@@ -63,6 +65,17 @@ class Host(object):
                 sb.time_to_install -= 1
                 if sb.time_to_install == 0:
                     self.start(sb)
+        
+        if self.cluster.host_local_queue:
+            if self.load == self.capacity:
+                return
+            while len(self.request_queue) > 0:
+                req = self.request_queue.popleft()
+                if not self.full(req.function):
+                    self.invoke(req)
+                else:
+                    self.request_queue.appendleft(req)
+                    break
 
     def install(self, invocation):
         sb = Sandbox(self, invocation.function, self.install_time)
@@ -103,7 +116,7 @@ class Host(object):
 
         available_sb = [sb for sb in self.sandboxes if sb.function.function_id == function_id and sb.state == 'idle']
         if len(available_sb) > 0: # warm start
-            chosen_sb = random.choice(available_sb) # OW currently randomly chooses warm sb
+            chosen_sb = common.random.choice(available_sb) # OW currently randomly chooses warm sb
             chosen_sb.invocation = invocation
             self.start(chosen_sb)
             self.sb_load -= function.demand
@@ -133,7 +146,7 @@ class Host(object):
         print('host: ', self.host_id, 'running:', len(self.invocations),'utilization:', self.load, 'sandboxes:', len(self.sandboxes))
 
 class Cluster(object):
-    def __init__(self, hosts):
+    def __init__(self, hosts, configs):
         self.capacity = 0
         self.load = 0
         for h in hosts:
@@ -142,6 +155,7 @@ class Cluster(object):
         self.hosts = hosts
         n = len(hosts)
         self.co_primes = [k for k in range(2, n) if math.gcd(k, n) == 1]
+        self.host_local_queue = configs['host_local_queue']
         self.request_queue = deque()
         self.epoch = 0
 
@@ -153,21 +167,34 @@ class Cluster(object):
     def tick(self):
         for h in self.hosts:
             h.tick()
-        remaining_queue = deque()
-        while len(self.request_queue) > 0:
-            req = self.request_queue.popleft()
-            if not self.schedule(req):
-                remaining_queue.append(req)
-        self.request_queue = remaining_queue
-        stats['inqueue'].append(len(remaining_queue))
-        stats['load'].append(self.load / self.capacity)
+
+        if self.host_local_queue:
+            # process request queue
+            for req in self.request_queue:
+                self.schedule(req) # here schedule() should always return True
+            self.request_queue.clear()
+            # stats
+            stats['inqueue'].append(sum([len(h.request_queue) for h in self.hosts]))
+            stats['load'].append(self.load / self.capacity)
+
+        else: # global queue
+            # process request queue
+            remaining_queue = deque()
+            while len(self.request_queue) > 0:
+                req = self.request_queue.popleft()
+                if not self.schedule(req):
+                    remaining_queue.append(req)
+            self.request_queue = remaining_queue
+            # stats
+            stats['inqueue'].append(len(remaining_queue))
+            stats['load'].append(self.load / self.capacity)
+
         for k, v in temp_stats.items():
             if len(v) == 0:
                 stats[k].append(0.0)
             else:
                 stats[k].append(sum(v) / len(v))
             temp_stats[k] = list()
-
         self.epoch += 1 # tick
 
     def is_idle(self):
@@ -176,10 +203,20 @@ class Cluster(object):
         return all([len(h.invocations) == 0 for h in self.hosts])
 
     def schedule(self, invocation):
+        def fallback_to_random(invoc):
+            common.random.choice(self.hosts).request_queue.append(invoc)
+            temp_stats['distance'].append(len(self.hosts)/2)
+            metrics['non-home'].append(self.epoch)
+            
         function = invocation.function
         # overload fast path
         if self.load + function.demand > self.capacity:
-            return False
+            if self.host_local_queue:
+                fallback_to_random(invocation)
+                return True
+            else:
+                return False
+        # choose target
         chosen = function.function_id % len(self.hosts)
         stride = self.co_primes[function.function_id % len(self.co_primes)]
         remaining = len(self.hosts)
@@ -189,7 +226,12 @@ class Cluster(object):
             remaining -= 1
             chosen = (chosen + stride) % len(self.hosts)
         else:
-            return False
+            if self.host_local_queue:
+                fallback_to_random(invocation)
+                return True
+            else:
+                return False
+
         target = self.hosts[chosen]
         target.invoke(invocation)
         temp_stats['distance'].append(len(self.hosts) - remaining)
