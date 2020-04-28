@@ -5,13 +5,13 @@ from functools import reduce
 import json
 import hashlib
 
-from common import init_gen
+import common
 from cluster import Cluster, Host, Function, Invocation, metrics, stats
 import workload
 import plot
 
 def main(seed, workloads, hosts, cluster, **kwargs):
-    init_gen(seed)
+    common.init_gen(seed)
 
     wl_gen = getattr(workload, workloads['type'])
     wl = wl_gen(**workloads['parameters'])

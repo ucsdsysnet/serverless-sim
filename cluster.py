@@ -116,7 +116,7 @@ class Host(object):
 
         available_sb = [sb for sb in self.sandboxes if sb.function.function_id == function_id and sb.state == 'idle']
         if len(available_sb) > 0: # warm start
-            chosen_sb = common.random.choice(available_sb) # OW currently randomly chooses warm sb
+            chosen_sb = common.gen.choice(available_sb) # OW currently randomly chooses warm sb
             chosen_sb.invocation = invocation
             self.start(chosen_sb)
             self.sb_load -= function.demand
@@ -204,7 +204,7 @@ class Cluster(object):
 
     def schedule(self, invocation):
         def fallback_to_random(invoc):
-            common.random.choice(self.hosts).request_queue.append(invoc)
+            common.gen.choice(self.hosts).request_queue.append(invoc)
             temp_stats['distance'].append(len(self.hosts)/2)
             metrics['non-home'].append(self.epoch)
             
