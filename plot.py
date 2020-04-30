@@ -6,10 +6,9 @@ import numpy as np
 def plot(epoch, metrics, stats, filename):
     nrow = 5
     ncol = 2
-    def gen_axi(axs):
-        return lambda i: axs[i//ncol][i%ncol]
     fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey=False, figsize=(12, 10))
-    axi = gen_axi(axs)
+    def axi(i):
+        return axs[i//ncol][i%ncol]
     x = np.arange(0.5, epoch)
 
     current = 0
@@ -28,6 +27,7 @@ def plot(epoch, metrics, stats, filename):
     current += 1
     def fmt_stat(y):
         return ('%.3f' % mean(y))+'±'+('%.3f' % stdev(y))
+    # axi(current).bar(x, stats['load'], 1, facecolor='k', alpha=0.75)    
     userload = [(load - sys) for load, sys in zip(stats['load'], stats['sys-load'])]
     axi(current).bar(x, stats['sys-load'], 1, facecolor='r', alpha=0.75) # cold start (system) load
     axi(current).bar(x, userload, 1, bottom=stats['sys-load'], facecolor='g', alpha=0.75) # user load
