@@ -6,18 +6,21 @@ import statistics
 from collections import OrderedDict, deque
 import common
 
+# metrics include epochs of events
 metrics = { 'request':[],
             'start':[],
             'finish':[],
             'cold-start':[], 
             'evict':[], 
             'non-home':[]}
-
+# stats include stat values at every epoch
 stats  =  { 'load':[],
+            'sb-load':[],
+            'sys-load':[],
             'inqueue':[],
             'delay':[],
             'distance':[]}
-
+# temporary stats to be averaged at every epoch
 temp_stats = {  'delay':[],
                 'distance':[]}
 
@@ -48,8 +51,8 @@ class Host(object):
         self.invocation_per_host_cap = configs['invocation_per_host_cap']
         self.install_time = configs['install_time']
         self.cluster = None
-        self.load = 0
-        self.sb_load = 0
+        self.load = 0 # load includes user load, sandbox cold start load, but not idle sandbox load
+        self.sb_load = 0 # idle sandbox load
         self.sandboxes = list() # LRU
         self.invocations = set()
         self.request_queue = deque()
@@ -175,7 +178,6 @@ class Cluster(object):
             self.request_queue.clear()
             # stats
             stats['inqueue'].append(sum([len(h.request_queue) for h in self.hosts]))
-            stats['load'].append(self.load / self.capacity)
 
         else: # global queue
             # process request queue
@@ -187,14 +189,22 @@ class Cluster(object):
             self.request_queue = remaining_queue
             # stats
             stats['inqueue'].append(len(remaining_queue))
-            stats['load'].append(self.load / self.capacity)
 
+        # collect stats
+        # load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state != 'idle'])
+        # assert(load == self.load)
+        stats['load'].append(self.load / self.capacity)
+        sb_load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state == 'idle'])
+        stats['sb-load'].append(sb_load / self.capacity)
+        sys_load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state == 'installing'])
+        stats['sys-load'].append(sys_load / self.capacity)
         for k, v in temp_stats.items():
             if len(v) == 0:
                 stats[k].append(0.0)
             else:
                 stats[k].append(sum(v) / len(v))
             temp_stats[k] = list()
+
         self.epoch += 1 # tick
 
     def is_idle(self):
