@@ -208,8 +208,12 @@ class Cluster(object):
         self.epoch += 1 # tick
 
     def is_idle(self):
-        if not len(self.request_queue) == 0:
-            return False
+        if self.host_local_queue:
+            if not all([len(h.request_queue) == 0 for h in self.hosts]):
+                return False
+        else:
+            if not len(self.request_queue) == 0:
+                return False
         return all([len(h.invocations) == 0 for h in self.hosts])
 
     def schedule(self, invocation):
