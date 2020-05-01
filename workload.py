@@ -25,14 +25,15 @@ Knobs:
     - number of functions (possibly not all functions have invocations)
     - number of invocations (possibly less than this number)
 """
-def azure(span, n_functions, n_invocations, dist_mu, dist_sigma, CV, start_window, start_load, BP_percentage, **kwargs):
-    dist_mu = -7.85
-    dist_sigma = 2.75
+def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_sigma, CV, dur_mu, dur_sigma, start_window, start_load, BP_percentage, **kwargs):
+    # memory demand distribution, stats from https://www.datadoghq.com/state-of-serverless/. the paper has memory usage stats, consistent w/ demand from datadog.
+    mems = common.random_from_histogram(mem_hist, mem_bins, n_functions)
+
     # create functions
-    fns = [Function(i, 1) for i in range(n_functions)] # TODO: use memory distribution as "demand"
-    function_dist = [0] * n_functions # fn -> invocations of that fn
+    fns = [Function(i, mems[i]) for i in range(n_functions)]
 
     # allocate invocations to functions
+    function_dist = [0] * n_functions # fn -> invocations of that fn
     created = 0
     while created < n_invocations:
         fnid = int(common.gen.lognormvariate(dist_mu, dist_sigma) * n_functions)
@@ -44,7 +45,18 @@ def azure(span, n_functions, n_invocations, dist_mu, dist_sigma, CV, start_windo
     CVs = []
     for _ in range(n_functions):
         CVs.append(1) # TODO: use CV distribution, using random.choice(), make sure in [0, 10]
-    
+
+    # duration distribution
+    durations = []
+    while len(durations) < n_functions:
+        dur = common.gen.lognormvariate(dist_mu, dist_sigma)
+        if dur > 60.0: # timeout
+            continue
+        if dur < 1.0:
+            durations.append(1)
+        else:
+            durations.append(round(dur))
+
     # distribution function
     def dist_func(x):
         # if x >= 0.2 and x < 0.3:
@@ -98,7 +110,7 @@ def azure(span, n_functions, n_invocations, dist_mu, dist_sigma, CV, start_windo
             ts = round(current_ts)
             if ts >= span: break # will have more or less invocations
             # duration
-            dur = 2 # TODO: use duration distribution
+            dur = durations[i]
             invoc = Invocation(fns[i], dur)
             existing_list = new_invocs.get(ts, list())
             existing_list.append(invoc)
