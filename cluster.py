@@ -6,22 +6,22 @@ import statistics
 from collections import OrderedDict, deque
 import common
 
-# metrics include epochs of events
-metrics = { 'request':[],
-            'start':[],
-            'finish':[],
-            'cold-start':[], 
-            'evict':[], 
-            'non-home':[]}
-# stats include stat values at every epoch
-stats  =  { 'load':[],
+# logs include epochs of events
+logs = {'request':[],
+        'start':[],
+        'finish':[],
+        'cold-start':[], 
+        'evict':[], 
+        'non-home':[]}
+# metrics include numbers at every epoch
+metrics = { 'load':[],
             'sb-load':[],
             'sys-load':[],
             'inqueue':[],
             'delay':[],
             'distance':[]}
-# temporary stats to be averaged at every epoch
-temp_stats = {  'delay':[],
+# temporary metrics to be averaged at every epoch
+temp_metrics = {'delay':[],
                 'distance':[]}
 
 class Function(object):
@@ -84,7 +84,7 @@ class Host(object):
         sb = Sandbox(self, invocation.function, self.install_time)
         sb.invocation = invocation
         self.sandboxes.append(sb)
-        metrics['cold-start'].append(self.cluster.epoch)
+        logs['cold-start'].append(self.cluster.epoch)
 
     def evict(self, load2evict):
         i = 0
@@ -93,7 +93,7 @@ class Host(object):
                 released_load = self.sandboxes.pop(i).function.demand
                 self.sb_load -= released_load
                 load2evict -= released_load
-                metrics['evict'].append(self.cluster.epoch)
+                logs['evict'].append(self.cluster.epoch)
                 if load2evict <= 0:
                     break
             else:
@@ -107,8 +107,8 @@ class Host(object):
         sb.state = 'active'
         self.sandboxes.remove(sb)
         self.sandboxes.append(sb) # update LRU
-        temp_stats['delay'].append(invocation.started - invocation.requested)
-        metrics['start'].append(self.cluster.epoch)
+        temp_metrics['delay'].append(invocation.started - invocation.requested)
+        logs['start'].append(self.cluster.epoch)
 
     def invoke(self, invocation):
         function = invocation.function
@@ -137,7 +137,7 @@ class Host(object):
         sb.invocation = None
         sb.state = 'idle'
         self.invocations.remove(invocation)
-        metrics['finish'].append(self.cluster.epoch)
+        logs['finish'].append(self.cluster.epoch)
     
     def full(self, function):
         if self.load + function.demand > self.capacity: # overload
@@ -165,7 +165,7 @@ class Cluster(object):
     def request(self, invocation):
         invocation.requested = self.epoch
         self.request_queue.append(invocation)
-        metrics['request'].append(self.epoch)
+        logs['request'].append(self.epoch)
 
     def tick(self):
         for h in self.hosts:
@@ -176,8 +176,8 @@ class Cluster(object):
             for req in self.request_queue:
                 self.schedule(req) # here schedule() should always return True
             self.request_queue.clear()
-            # stats
-            stats['inqueue'].append(sum([len(h.request_queue) for h in self.hosts]))
+            # metrics
+            metrics['inqueue'].append(sum([len(h.request_queue) for h in self.hosts]))
 
         else: # global queue
             # process request queue
@@ -187,23 +187,23 @@ class Cluster(object):
                 if not self.schedule(req):
                     remaining_queue.append(req)
             self.request_queue = remaining_queue
-            # stats
-            stats['inqueue'].append(len(remaining_queue))
+            # metrics
+            metrics['inqueue'].append(len(remaining_queue))
 
-        # collect stats
+        # collect metrics
         # load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state != 'idle'])
         # assert(load == self.load)
-        stats['load'].append(self.load / self.capacity)
+        metrics['load'].append(self.load / self.capacity)
         sb_load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state == 'idle'])
-        stats['sb-load'].append(sb_load / self.capacity)
+        metrics['sb-load'].append(sb_load / self.capacity)
         sys_load = sum([sb.function.demand for h in self.hosts for sb in h.sandboxes if sb.state == 'installing'])
-        stats['sys-load'].append(sys_load / self.capacity)
-        for k, v in temp_stats.items():
+        metrics['sys-load'].append(sys_load / self.capacity)
+        for k, v in temp_metrics.items():
             if len(v) == 0:
-                stats[k].append(0.0)
+                metrics[k].append(0.0)
             else:
-                stats[k].append(sum(v) / len(v))
-            temp_stats[k] = list()
+                metrics[k].append(sum(v) / len(v))
+            temp_metrics[k] = list()
 
         self.epoch += 1 # tick
 
@@ -219,8 +219,8 @@ class Cluster(object):
     def schedule(self, invocation):
         def fallback_to_random(invoc):
             common.gen.choice(self.hosts).request_queue.append(invoc)
-            temp_stats['distance'].append(len(self.hosts)/2)
-            metrics['non-home'].append(self.epoch)
+            temp_metrics['distance'].append(len(self.hosts)/2)
+            logs['non-home'].append(self.epoch)
             
         function = invocation.function
         # overload fast path
@@ -248,9 +248,9 @@ class Cluster(object):
 
         target = self.hosts[chosen]
         target.invoke(invocation)
-        temp_stats['distance'].append(len(self.hosts) - remaining)
+        temp_metrics['distance'].append(len(self.hosts) - remaining)
         if remaining < len(self.hosts):
-            metrics['non-home'].append(self.epoch)
+            logs['non-home'].append(self.epoch)
         return True
 
     def describe(self):
@@ -263,7 +263,7 @@ class Cluster(object):
     def dashboard(self):
         ret = '======== DASHBOARD ========\n'
         ret += 'finish epoch  \t\t {0}\n'.format(self.epoch)
-        for k, l in metrics.items():
+        for k, l in logs.items():
             ret += '{0}  \t\t {1}\n'.format(k, len(l))
-        ret += 'average load: \t\t {0}\n'.format(statistics.mean(stats['load']))
+        ret += 'average load: \t\t {0}\n'.format(statistics.mean(metrics['load']))
         return ret

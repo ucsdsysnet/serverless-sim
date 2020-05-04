@@ -7,7 +7,7 @@ import json
 import hashlib
 
 import common
-from cluster import Cluster, Host, Function, Invocation, metrics, stats
+from cluster import Cluster, Host, Function, Invocation, logs, metrics
 import workload
 import plot
 
@@ -22,8 +22,8 @@ def test():
     f1 = Function(1, 1)
     f2 = Function(2, 1)
     # define invocations
-    invocations =  {1:[Invocation(f1, 2) for _ in range(4)],
-                    # 10:[Invocation(f2, 2) for _ in range(20)]}
+    invocations =  {1:[Invocation(f1, 2) for _ in range(3)],
+                    10:[Invocation(f2, 2), Invocation(f1, 2)]
                     }
     # ticks
     while len(invocations) > 0 or not c.is_idle():
@@ -33,11 +33,8 @@ def test():
         c.tick()
         c.describe()
     c.dashboard()
-    plot.plot(c.epoch, metrics, stats, 'test.png')
+    plot.plot(c.epoch, logs, metrics, 'run_test.png')
 
 
 if __name__ == '__main__':
-    # import cProfile
-
-    # cProfile.run('azuretest()', 'restats')
     test()

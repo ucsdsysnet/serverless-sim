@@ -6,7 +6,7 @@ import json
 import hashlib
 
 import common
-from cluster import Cluster, Host, Function, Invocation, metrics, stats
+from cluster import Cluster, Host, Function, Invocation, logs, metrics
 import workload
 import plot
 
@@ -32,7 +32,7 @@ def main(seed, workloads, hosts, cluster, **kwargs):
         clstr.tick()
         print('epoch:', clstr.epoch, file=sys.stderr)
 
-    return clstr.epoch, metrics, stats
+    return clstr.epoch, logs, metrics
 
 if __name__ == '__main__':
     params = json.load(sys.stdin)
