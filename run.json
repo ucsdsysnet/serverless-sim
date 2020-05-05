@@ -1,6 +1,6 @@
 {
     "seed": 12345,
-    "workloads": {
+    "workloads": [{
         "type": "azure",
         "parameters": {
             "span": 600,
@@ -19,7 +19,7 @@
             "start_load": 0.25,
             "BP_percentage": 0.0
         }
-    },
+    }],
     "hosts": [
         {
             "amount": 1000,

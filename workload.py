@@ -4,6 +4,13 @@ import math
 import common
 from cluster import Function, Invocation
 
+fn_counter = 0
+
+def new_fnid():
+    global fn_counter
+    fn_counter += 1
+    return fn_counter - 1
+
 def burst(func, start, duration, parallelism):
     invocs = {}
     invocs[start] = [Invocation(func, duration) for _ in range(parallelism)]
@@ -12,7 +19,7 @@ def burst(func, start, duration, parallelism):
 def burst_parallel_app(func, parallelism, start, end, n_bursts, duration):
     invocs = {}
     for i in range(n_bursts):
-        invocs = merge_invocs(invocs, burst(func, int(common.gen.randint(start, end)), duration, parallelism))
+        extend_workload(invocs, burst(func, int(common.gen.randint(start, end)), duration, parallelism))
     return invocs
 
 def faas(ntasks):
@@ -23,14 +30,14 @@ See Azure's "Serverless in the Wild" paper.
 Knobs:
     - timespan in seconds
     - number of functions (possibly not all functions have invocations)
-    - number of invocations (possibly less than this number)
+    - number of invocations (possibly more or less than this number)
 """
 def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_sigma, CV, dur_mu, dur_sigma, start_window, start_load, BP_percentage, **kwargs):
     # memory demand distribution, stats from https://www.datadoghq.com/state-of-serverless/. the paper has memory usage stats, consistent w/ demand from datadog.
     mems = common.random_from_histogram(mem_hist, mem_bins, n_functions)
 
     # create functions
-    fns = [Function(i, mems[i]) for i in range(n_functions)]
+    fns = [Function(new_fnid(), mems[i]) for i in range(n_functions)]
 
     # allocate invocations to functions
     function_dist = [0] * n_functions # fn -> invocations of that fn
@@ -116,15 +123,14 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
             existing_list.append(invoc)
             new_invocs[ts] = existing_list
 
-        invocs = merge_invocs(invocs, new_invocs)
+        extend_workload(invocs, new_invocs)
 
     return invocs
 
-def merge_invocs(invoc1, invoc2):
-    ret = invoc1.copy()
-    for k, v in invoc2.items():
-        if k in ret:
-            ret[k].extend(v)
+def extend_workload(wl1, wl2):
+    for k, v in wl2.items():
+        if k in wl1:
+            wl1[k].extend(v)
         else:
-            ret[k] = v
-    return ret
+            wl1[k] = v
+    return wl1

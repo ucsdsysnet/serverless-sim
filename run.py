@@ -13,8 +13,11 @@ import plot
 def main(seed, workloads, hosts, cluster, **kwargs):
     common.init_gen(seed)
 
-    wl_gen = getattr(workload, workloads['type'])
-    wl = wl_gen(**workloads['parameters'])
+    wklds = {}
+    for wl_type in workloads:
+        wl_gen = getattr(workload, wl_type['type'])
+        wl = wl_gen(**wl_type['parameters'])
+        workload.extend_workload(wklds, wl)
 
     host_list = []
     i = 0
@@ -25,10 +28,10 @@ def main(seed, workloads, hosts, cluster, **kwargs):
     clstr = Cluster(host_list, cluster['configs'])
 
     # ticks
-    while len(wl) > 0 or not clstr.is_idle():
-        for i in wl.get(clstr.epoch, []):
+    while len(wklds) > 0 or not clstr.is_idle():
+        for i in wklds.get(clstr.epoch, []):
             clstr.request(i)
-        wl.pop(clstr.epoch, None)
+        wklds.pop(clstr.epoch, None)
         clstr.tick()
         print('epoch:', clstr.epoch, file=sys.stderr)
 
