@@ -16,7 +16,7 @@ def main(seed, workloads, hosts, cluster, **kwargs):
     wklds = {}
     for wl_type in workloads:
         wl_gen = getattr(workload, wl_type['type'])
-        wl = wl_gen(**wl_type['parameters'])
+        wl, _ = wl_gen(**wl_type['parameters'])
         workload.extend_workload(wklds, wl)
 
     host_list = []

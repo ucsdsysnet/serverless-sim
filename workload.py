@@ -125,7 +125,7 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
         extend_workload(invocs, new_invocs)
 
-    return invocs
+    return invocs, fns
 
 def extend_workload(wl1, wl2):
     for k, v in wl2.items():
