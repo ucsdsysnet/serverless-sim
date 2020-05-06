@@ -5,17 +5,25 @@ import time
 from functools import reduce
 import json
 import hashlib
+import requests
 
 import common
 from cluster import Cluster, Host, Function, Invocation, logs, metrics
 import workload
 import plot
 
+session = requests.Session()
+adapter = requests.adapters.HTTPAdapter(
+    pool_connections=100,
+    pool_maxsize=100)
+session.mount('http://', adapter)
+
 def create_function(fnid, demand):
     pass
 
 def request(invocation):
     print('requesting:', invocation, time.time(), file=sys.stderr)
+    session.get("https://www.google.com/")
 
 def main(seed, workloads, *args, **kwargs):
     common.init_gen(seed)
