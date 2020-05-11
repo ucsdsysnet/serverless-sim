@@ -51,5 +51,6 @@ if __name__ == '__main__':
     with open('runs/' + run_id + '.json', 'w') as f:
         json.dump(params, f)
 
-    plot.plot(*main(**params), 'runs/' + run_id + '.pdf')
-    print('finished. run_id:', run_id, file=sys.stderr)
+    outfile = 'runs/' + run_id + '.pdf'
+    plot.plot(*main(**params), outfile)
+    print('Finished. Plotted:', outfile, file=sys.stderr)
