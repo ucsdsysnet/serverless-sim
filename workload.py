@@ -3,6 +3,7 @@
 import math
 import common
 from cluster import Function, Invocation
+from collections import defaultdict
 
 fn_counter = 0
 
@@ -10,6 +11,23 @@ def new_fnid():
     global fn_counter
     fn_counter += 1
     return fn_counter - 1
+
+def itemized(n_functions, ids, names, mem_demand, durations, n_invocations_at_ts, **kwargs):
+    invocs = {}
+    assert n_functions == len(ids) == len(names) == len(mem_demand) == len(durations) == len(n_invocations_at_ts)
+
+    fns = []
+    for i in range(n_functions):
+        name = names[i]
+        fns.append(Function(ids[i], mem_demand[i], name))
+        for ts in range(len(n_invocations_at_ts[i])):
+            if n_invocations_at_ts[i][ts] != 0:
+                existing_list = invocs.get(ts, [])
+                existing_list.extend([Invocation(fns[i], durations[i]) for _ in range(n_invocations_at_ts[i][ts])])
+                invocs[ts] = existing_list
+
+    return invocs, fns
+
 
 def burst(func, start, duration, parallelism):
     invocs = {}
@@ -55,8 +73,8 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
     # duration distribution
     durations = []
-    while len(durations) < n_functions:
-        dur = common.gen.lognormvariate(dist_mu, dist_sigma)
+    while len(durations) < n_invocations:
+        dur = common.gen.lognormvariate(dur_mu, dur_sigma)
         if dur > 60.0: # timeout
             continue
         if dur < 1.0:
@@ -77,10 +95,11 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
     # create {Tn} using function_dist and CVs, use lognormal distribution for inter-arrival time
     invocs = {} # invocs w/ timestamps
+    created = 0
     for i in range(n_functions):
         new_invocs = {}
         if function_dist[i] == 0: break
-        if function_dist[i] >= 300 and function_dist[i] < 3000 and common.gen.random() < BP_percentage: # assume half of these are burst-parallel apps
+        if function_dist[i] >= 300 and function_dist[i] < 3000 and common.gen.random() < BP_percentage: # assume some of these are burst-parallel apps
             # calculate A2, A3
             step = span // 3
             startpoint = common.gen.randint(0, step)
@@ -117,11 +136,12 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
             ts = round(current_ts)
             if ts >= span: break # will have more or less invocations
             # duration
-            dur = durations[i]
+            dur = durations[created]
             invoc = Invocation(fns[i], dur)
             existing_list = new_invocs.get(ts, list())
             existing_list.append(invoc)
             new_invocs[ts] = existing_list
+            created += 1
 
         extend_workload(invocs, new_invocs)
 

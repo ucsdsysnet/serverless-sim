@@ -25,9 +25,10 @@ temp_metrics = {'delay':[],
                 'distance':[]}
 
 class Function(object):
-    def __init__(self, function_id, demand):
+    def __init__(self, function_id, demand, function_name=None):
         self.function_id = function_id
         self.demand = demand
+        self.function_name = function_name
 
 class Invocation(object):
     def __init__(self, function, duration):
