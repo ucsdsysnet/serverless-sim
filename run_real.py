@@ -36,8 +36,8 @@ def create_function(function):
     if function.function_name:
         return
     demand = function.demand
+    function.function_name = 'loop_new_%d_%d' % (demand * 128, function.function_id)
     assigned_count[demand] += 1
-    function.function_name = 'loop_new_%d_%d' % (demand * 128, assigned_count[demand])
 
 def request(invocation):
     global n_requested
