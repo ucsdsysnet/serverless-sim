@@ -28,6 +28,14 @@ def itemized(n_functions, ids, names, mem_demand, durations, n_invocations_at_ts
 
     return invocs, fns
 
+def linear_dist(id, name, span, a, b, mem_demand, duration, **kwargs):
+    invocs = {}
+    fn = Function(id, mem_demand, name)
+
+    for t in range(span):
+        invocs[t] = []
+        invocs[t].extend([Invocation(fn, duration) for _ in range(round(a*t+b))])
+    return invocs, [fn]
 
 def burst(func, start, duration, parallelism):
     invocs = {}
