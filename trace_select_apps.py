@@ -4,8 +4,7 @@ import os
 import csv
 import collections
 
-# tracedir = os.environ['AZURE_TRACE_DIR']
-tracedir = '/Users/aolx/develop/azurefunction-dataset'
+tracedir = os.environ['AZURE_TRACE_DIR']
 infile = 'function_durations_percentiles.anon.d01.csv'
 outfile = 'chosen_apps.csv'
 

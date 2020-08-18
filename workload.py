@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+import sys, os
 import math
+import csv
 import common
 from cluster import Function, Invocation
 from collections import defaultdict
 
+tracedir = os.environ['AZURE_TRACE_DIR']
 fn_counter = 0
 
 def new_fnid():
@@ -154,6 +157,75 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
         extend_workload(invocs, new_invocs)
 
     return invocs, fns
+
+def azure_trace(app_csv, invocations, durations, mem_hist, mem_bins, start_minute, length):
+    apps = set()
+    fns = {}
+    duration_weights = {}
+    invocs = {}
+    with open(app_csv, newline='') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            apps.add(row[0])
+    
+    with open(tracedir+'/'+durations, newline='') as f:
+        reader = csv.reader(f)
+        reader.__next__()
+        for row in reader:
+            if row[1] in apps:
+                funcname = row[2]
+                fns[funcname] = Function(new_fnid(), 0, funcname)
+                duration_weights[funcname] = [int(p) for p in row[7:]]
+    
+    mems = common.random_from_histogram(mem_hist, mem_bins, len(fns))
+    functions = list(fns.values())
+    for i in range(len(fns)):
+        functions[i].demand = mems[i]
+    
+    def get_dur(funcname):
+        weights = duration_weights[funcname]
+        x = common.gen.random()
+        if  x >= 0.25 and x < 0.5:
+            return round(weights[2] + (x-0.25)*(weights[3]-weights[2])/0.25) # return milliseconds
+        elif x >= 0.5 and x < 0.75:
+            return round(weights[3] + (x-0.5)*(weights[4]-weights[3])/0.25)
+        elif x >= 0.01 and x < 0.25:
+            return round(weights[1] + (x-0.01)*(weights[2]-weights[1])/0.24)
+        elif x >= 0.75 and x < 0.99:
+            return round(weights[4] + (x-0.75)*(weights[5]-weights[4])/0.24)
+        elif x < 0.01:
+            return round(weights[0] + x*(weights[1]-weights[0])/0.01)
+        else: #  x >= 0.99
+            return round(weights[5] + (x-0.99)*(weights[6]-weights[5])/0.01)
+
+    with open(tracedir+'/'+invocations, newline='') as f:
+        reader = csv.reader(f)
+        reader.__next__()
+        for row in reader:
+            if row[1] in apps:
+                funcname = row[2]
+                if funcname not in fns:
+                    print('function', funcname, 'not in durations', file=sys.stderr)
+                    continue
+                start_idx = 4 + start_minute
+                counts = [int(c) for c in row[start_idx:start_idx+length]]
+                current = common.gen.randrange(60)
+                for i in range(len(counts)):
+                    c = counts[i]
+                    if c == 0:
+                        current = (current + 1) % 60
+                        continue
+                    else:
+                        for _ in range(c):
+                            second = int(current) + 60*i
+                            invocs[second] = invocs.get(second, []) 
+                            invocs[second].append(Invocation(fns[funcname], get_dur(funcname)))
+                            current = (current + 60/c) % 60
+
+    for k in invocs.keys():
+        common.gen.shuffle(invocs[k])
+    return invocs, list(fns.values())
+    
 
 def extend_workload(wl1, wl2):
     for k, v in wl2.items():

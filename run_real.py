@@ -8,6 +8,7 @@ import json
 import hashlib
 import requests
 import urllib3
+import subprocess
 from collections import defaultdict
 
 import common
@@ -33,20 +34,22 @@ def get_func(invocation):
     return invocation.function.function_name
 
 def create_function(function):
-    if function.function_name:
-        return
-    demand = function.demand
-    function.function_name = 'loop_new_%d_%d' % (demand * 128, function.function_id)
-    assigned_count[demand] += 1
+    if not function.function_name:
+        demand = function.demand
+        function.function_name = 'loop_new_%d_%d' % (demand * 128, function.function_id)
+        assigned_count[demand] += 1
+    res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
+    res.check_returncode()
+
 
 def request(invocation):
     global n_requested
     n_requested += 1
     fn = get_func(invocation)
-    print('requesting:', fn, 'at', time.time(), 'for', invocation.duration, 'seconds', file=sys.stderr)
+    print('requesting:', fn, 'at', time.time(), 'for', invocation.duration/1000, 'seconds', file=sys.stderr)
     url = 'https://' + APIHOST + '/api/v1/namespaces/_/actions/' + fn
     headers = {'Content-Type':'application/json'}
-    jsondata = {"duration":invocation.duration, "long":False}
+    jsondata = {"duration":invocation.duration/1000, "long":False}
     resp = session.request('post', url, params={'blocking':'false'}, headers=headers, json=jsondata)
     print('response:', resp.json(), file=sys.stderr)
     return resp
@@ -55,7 +58,7 @@ def main(seed, workloads, *args, **kwargs):
     common.init_gen(seed)
 
     wklds = {}
-    all_functions = set() # order is arbitary
+    all_functions = set() # order is arbitrary
     for wl_type in workloads:
         wl_gen = getattr(workload, wl_type['type'])
         wl, fns = wl_gen(**wl_type['parameters'])
