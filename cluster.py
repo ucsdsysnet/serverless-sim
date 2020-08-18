@@ -44,6 +44,7 @@ class Sandbox(object):
         self.time_to_install = install_time
         self.state = 'installing' # installing, idle, active
         self.invocation = None
+        self.idle_since = None
 
 class Host(object):
     def __init__(self, host_id, configs):
@@ -51,6 +52,7 @@ class Host(object):
         self.capacity = configs['capacity']
         self.invocation_per_host_cap = configs['invocation_per_host_cap']
         self.install_time = configs['install_time']
+        self.protect_time = configs['protect_time']
         self.cluster = None
         self.load = 0 # load includes user load, sandbox cold start load, but not idle sandbox load
         self.sb_load = 0 # idle sandbox load
@@ -106,6 +108,7 @@ class Host(object):
         invocation = sb.invocation
         invocation.started = self.cluster.epoch
         sb.state = 'active'
+        sb.idle_since = None
         self.sandboxes.remove(sb)
         self.sandboxes.append(sb) # update LRU
         temp_metrics['delay'].append(invocation.started - invocation.requested)
@@ -137,12 +140,22 @@ class Host(object):
         self.sb_load += invocation.function.demand
         sb.invocation = None
         sb.state = 'idle'
+        sb.idle_since = self.cluster.epoch
         self.invocations.remove(invocation)
         logs['finish'].append(self.cluster.epoch)
     
     def full(self, function):
         if self.load + function.demand > self.capacity: # overload
             return True
+        if function.function_id not in [sb.function.function_id for sb in self.sandboxes if sb.state == 'idle']: # cold start
+            if self.load + self.sb_load + function.demand > self.capacity: # need to evict
+                required = self.load + self.sb_load + function.demand - self.capacity
+                for sb in [sbox for sbox in self.sandboxes if (sbox.state == 'idle' and self.cluster.epoch >= sbox.idle_since + self.protect_time)]:
+                    required -= sb.function.demand
+                    if required <= 0:
+                        break
+                else:
+                    return True
         return len([sb for sb in self.sandboxes if sb.function.function_id == function.function_id and
             sb.state == 'active']) >= self.invocation_per_host_cap # consider full for the function if too many invocations on host already
     
