@@ -94,6 +94,9 @@ release_invocations_per_function <-
 
 num_days <- 14
 
+release_invocations_per_function <- release_invocations_per_function %>%
+        inner_join(list_of_release_apps, by = c("HashApp"))
+
 release_invocations_per_function <- release_invocations_per_function %>% 
         mutate(AvgInvocationsPerDay = Invocations / num_days)
 ```
