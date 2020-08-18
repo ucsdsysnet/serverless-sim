@@ -68,6 +68,10 @@ def main(seed, workloads, *args, **kwargs):
     for f in all_functions:
         create_function(f)
 
+    list_of_workloads = list(wklds.values())
+    lengths = [len(s) for s in list_of_workloads]
+    print('average', sum(lengths)/len(lengths), 'invocations, highest', max(lengths), file=sys.stderr)
+
     start = time.time() + 1
     print('starting at', start, '...', file=sys.stderr)
     

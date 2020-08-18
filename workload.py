@@ -158,7 +158,7 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
     return invocs, fns
 
-def azure_trace(app_csv, invocations, durations, mem_hist, mem_bins, start_minute, length):
+def azure_trace(app_csv, invocations, durations, mem_hist, mem_bins, start_minute, length, start_window, start_load):
     apps = set()
     fns = {}
     duration_weights = {}
@@ -224,8 +224,16 @@ def azure_trace(app_csv, invocations, durations, mem_hist, mem_bins, start_minut
 
     for k in invocs.keys():
         common.gen.shuffle(invocs[k])
-    return invocs, list(fns.values())
+    return slowstart(invocs, start_window, start_load), list(fns.values())
     
+def slowstart(invocs, start_window, start_load):
+    dur = max(list(invocs.keys()))
+    for i in range(int(dur*start_window)):
+        prob = start_load + (1-start_load) * i / (dur * start_window)
+        print(i,':',prob)
+        if i in invocs:
+            invocs[i] = common.gen.sample(invocs[i], int(round(len(invocs[i])*prob)))
+    return invocs
 
 def extend_workload(wl1, wl2):
     for k, v in wl2.items():
