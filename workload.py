@@ -158,29 +158,47 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
     return invocs, fns
 
-def azure_trace(app_csv, invocations, durations, mem_hist, mem_bins, start_minute, length, start_window, start_load):
-    apps = set()
-    fns = {}
+def azure_trace(app_csv, invocations, durations, memory, start_minute, length, start_window, start_load):
+    apps = {} # appname -> [funcnames]
+    fns = {} # funcname -> Function
     duration_weights = {}
+    memory_demands = {}
     invocs = {}
+
     with open(app_csv, newline='') as f:
         reader = csv.reader(f)
         for row in reader:
-            apps.add(row[0])
+            apps[row[0]] = []
     
     with open(tracedir+'/'+durations, newline='') as f:
         reader = csv.reader(f)
         reader.__next__()
         for row in reader:
-            if row[1] in apps:
+            appname = row[1]
+            if appname in apps:
                 funcname = row[2]
-                fns[funcname] = Function(new_fnid(), 0, funcname)
+                apps[appname].append(funcname)
                 duration_weights[funcname] = [int(p) for p in row[7:]]
     
-    mems = common.random_from_histogram(mem_hist, mem_bins, len(fns))
-    functions = list(fns.values())
-    for i in range(len(fns)):
-        functions[i].demand = mems[i]
+    with open(tracedir+'/'+memory, newline='') as f:
+        reader = csv.reader(f)
+        reader.__next__()
+        for row in reader:
+            appname = row[1]
+            if appname in apps:
+                for funcname in apps[appname]:
+                    if int(row[3]) <= 128:
+                        memory_demands[funcname] = 1
+                    elif int(row[3]) <= 256:
+                        memory_demands[funcname] = 2
+                    elif int(row[3]) <= 384:
+                        memory_demands[funcname] = 3
+                    else:
+                        memory_demands[funcname] = 4
+
+    for func in duration_weights:
+        if func in memory_demands:
+            fns[func] = Function(new_fnid(), memory_demands[func], func)
     
     def get_dur(funcname):
         weights = duration_weights[funcname]

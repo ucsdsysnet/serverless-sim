@@ -54,6 +54,14 @@ def request(invocation):
     print('response:', resp.json(), file=sys.stderr)
     return resp
 
+def stats(workloads):
+    worksum = 0
+    all_invocs = [i for w in workloads for i in w]
+    for i in all_invocs:
+        worksum += i.duration * i.function.demand
+    return worksum
+
+
 def main(seed, workloads, *args, **kwargs):
     common.init_gen(seed)
 
@@ -65,12 +73,13 @@ def main(seed, workloads, *args, **kwargs):
         workload.extend_workload(wklds, wl)
         all_functions.update(fns)
 
-    for f in all_functions:
-        create_function(f)
-
     list_of_workloads = list(wklds.values())
     lengths = [len(s) for s in list_of_workloads]
     print('average', sum(lengths)/len(lengths), 'invocations, highest', max(lengths), file=sys.stderr)
+    print('total worksum:', stats(wklds.values()))
+
+    for f in all_functions:
+        create_function(f)
 
     start = time.time() + 1
     print('starting at', start, '...', file=sys.stderr)
