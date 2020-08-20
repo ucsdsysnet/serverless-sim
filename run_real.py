@@ -9,6 +9,7 @@ import hashlib
 import requests
 import urllib3
 import subprocess
+import numpy as np
 from collections import defaultdict
 
 import common
@@ -55,11 +56,18 @@ def request(invocation):
     return resp
 
 def stats(workloads):
-    worksum = 0
+    works = []
+    durations = []
+    memorys = []
     all_invocs = [i for w in workloads for i in w]
     for i in all_invocs:
-        worksum += i.duration * i.function.demand
-    return worksum
+        durations.append(i.duration)
+        memorys.append(i.function.demand)
+        works.append(i.duration * i.function.demand)
+    print('duration: average', np.average(durations), np.percentile(durations,1), np.percentile(durations,25), np.percentile(durations,50), np.percentile(durations,75), np.percentile(durations,99))
+    print('memorys:', np.percentile(memorys,1), np.percentile(memorys,25), np.percentile(memorys,50), np.percentile(memorys,75), np.percentile(memorys,99))
+    print('highest invocations:', max([len(sec) for sec in workloads]))
+    print('total invocations:', len(all_invocs), ', workload:', sum(works)/1000, 'sec x core, average ', sum(works)/1000/len(workloads), 'cores')
 
 
 def main(seed, workloads, *args, **kwargs):
@@ -75,8 +83,8 @@ def main(seed, workloads, *args, **kwargs):
 
     list_of_workloads = list(wklds.values())
     lengths = [len(s) for s in list_of_workloads]
-    print('average', sum(lengths)/len(lengths), 'invocations, highest', max(lengths), file=sys.stderr)
-    print('total worksum:', stats(wklds.values()))
+    stats(wklds.values())
+    print()
 
     for f in all_functions:
         create_function(f)
