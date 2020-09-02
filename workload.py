@@ -6,6 +6,7 @@ import csv
 import common
 from cluster import Function, Invocation
 from collections import defaultdict
+import trace_select_apps
 
 tracedir = os.environ['AZURE_TRACE_DIR']
 fn_counter = 0
@@ -158,14 +159,18 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
 
     return invocs, fns
 
-def azure_trace(app_csv, invocations, durations, memory, start_minute, length, start_window, start_load):
+def azure_trace(app_predicate, invocations, durations, memory, start_minute, length, start_window, start_load, downsample_factor):
     apps = {} # appname -> [funcnames]
     fns = {} # funcname -> Function
     duration_weights = {}
     memory_demands = {}
     invocs = {}
 
-    with open(app_csv, newline='') as f:
+    if app_predicate != '':
+        chosen_apps = 'chosen_apps.csv'
+        trace_select_apps.select_apps(eval(app_predicate), chosen_apps)
+
+    with open(chosen_apps, newline='') as f:
         reader = csv.reader(f)
         for row in reader:
             apps[row[0]] = []
@@ -237,20 +242,32 @@ def azure_trace(app_csv, invocations, durations, memory, start_minute, length, s
                     else:
                         for _ in range(c):
                             second = int(current) + 60*i
-                            invocs[second] = invocs.get(second, []) 
+                            invocs[second] = invocs.get(second, [])
                             invocs[second].append(Invocation(fns[funcname], get_dur(funcname)))
                             current = (current + 60/c) % 60
 
     for k in invocs.keys():
         common.gen.shuffle(invocs[k])
-    return slowstart(invocs, length, start_window, start_load), list(fns.values())
+    slowed = slowstart(invocs, length, start_window, start_load)
+    downsampled = downsample(slowed, downsample_factor)
+    
+    fns_to_invoke = set()
+    for invocs in downsampled.values():
+        for invoc in invocs:
+            fns_to_invoke.add(invoc.function)
+    return downsampled, list(fns_to_invoke)
     
 def slowstart(invocs, length, start_window, start_load):
     for i in range(int(length*60*start_window)):
         prob = start_load + (1-start_load) * i / (length * 60 * start_window)
         before = len(invocs[i])
-        invocs[i] = common.gen.sample(invocs[i], int(round(len(invocs[i])*prob)))
-        # print(i, before, '->', len(invocs[i]))
+        invocs[i] = [invoc for invoc in invocs[i] if common.gen.random() < prob]
+        if False: print(i, before, '->', len(invocs[i]))
+    return invocs
+
+def downsample(invocs, factor):
+    for i in range(len(invocs)):
+        invocs[i] = [invoc for invoc in invocs[i] if common.gen.random() < factor]
     return invocs
 
 def extend_workload(wl1, wl2):
