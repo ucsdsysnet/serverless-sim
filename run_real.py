@@ -5,12 +5,16 @@ import time
 import datetime as DT
 from functools import reduce
 import json
+import threading
+import queue
 import hashlib
 import requests
+from requests_futures.sessions import FuturesSession
 import urllib3
 import subprocess
 import numpy as np
 from collections import defaultdict
+import operator
 
 import common
 from cluster import Cluster, Host, Function, Invocation, logs, metrics
@@ -28,8 +32,13 @@ session.verify = False
 
 APIHOST = None
 
+future_session = None
+future_queue = queue.Queue()
+
 assigned_count = defaultdict(lambda: 0)
 n_requested = 0
+n_responded = 0
+n_error = 0
 
 def get_func(invocation):
     return invocation.function.function_name
@@ -42,18 +51,48 @@ def create_function(function):
     res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
     res.check_returncode()
 
+def print_responses():
+    while True:
+        global n_responded, n_error
+        future = future_queue.get()
+        n_responded += 1
+        if not future.result().ok:
+            n_error += 1
+            # print('response:', future.result().json(), file=sys.stderr)
+        future_queue.task_done()
+
+def async_request(invocation):
+    # start = time.time()
+    global n_requested
+    n_requested += 1
+    fn = invocation.function.function_name
+    # print('requesting:', fn, 'at', time.time(), 'for', invocation.duration/1000, 'seconds', file=sys.stderr)
+    url = 'https://' + APIHOST + '/api/v1/namespaces/_/actions/' + fn
+    headers = {'Content-Type':'application/json'}
+    jsondata = {"duration":invocation.duration/1000, "long":False}
+    future = future_session.request('post', url, params={'blocking':'false'}, headers=headers, json=jsondata)
+    future_queue.put(future)
+    # if n_requested % 1000 == 0:
+    #     print('total requested :', n_requested)
+    # print('elapse:', time.time()-start)
+    return
 
 def request(invocation):
     global n_requested
     n_requested += 1
     fn = get_func(invocation)
-    print('requesting:', fn, 'at', time.time(), 'for', invocation.duration/1000, 'seconds', file=sys.stderr)
+    # print('.', file=sys.stderr)
+    # print('requesting:', fn, 'at', time.time(), 'for', invocation.duration/1000, 'seconds', file=sys.stderr)
     url = 'https://' + APIHOST + '/api/v1/namespaces/_/actions/' + fn
     headers = {'Content-Type':'application/json'}
     jsondata = {"duration":invocation.duration/1000, "long":False}
     resp = session.request('post', url, params={'blocking':'false'}, headers=headers, json=jsondata)
+    # if resp.status_code > 299:
+    #     print('response:', resp.json(), file=sys.stderr)
     print('response:', resp.json(), file=sys.stderr)
-    return resp
+    if n_requested % 1000 == 0:
+        print('total requested :', n_requested)
+    return
 
 def stats(workloads):
     works = []
@@ -87,35 +126,50 @@ def main(seed, workloads, *args, **kwargs):
     print()
 
     for f in all_functions:
-        create_function(f)
+       create_function(f)
+
+    threading.Thread(target=print_responses, daemon=True).start()
 
     start = time.time() + 1
     print('starting at', start, '...', file=sys.stderr)
     
     def sleep_till(ts):
         cur = time.time()
-        if ts <= cur:
-            print('overflown to next tick!', file=sys.stderr)
+        if ts <= cur + 0.05:
             return
-        time.sleep(ts - cur)
+        time.sleep(ts - cur - 0.05)
+
+    def request_with_offset(start, invocs):
+        n = len(invocs)
+        nbatches = 10
+        barriers = np.linspace(0,1,nbatches+1)
+        batches = [int(v*n) for v in barriers]
+        for b in range(nbatches):
+            sleep_till(start+barriers[b])
+            for i in invocs[batches[b]:batches[b+1]]:
+                async_request(i)
 
     # start requests
     epoch = 0
     while len(wklds) > 0:
         sleep_till(start + epoch)
-        for i in wklds.get(epoch, []):
-            request(i)
+        offset = time.time()-start-epoch
+        request_with_offset(start+epoch, wklds.get(epoch, []))
         wklds.pop(epoch, None)
         epoch += 1
-        print('epoch:', epoch, file=sys.stderr)
+        print('epoch:', epoch, 'offset:', offset, 'requested:', n_requested, 'responded:', n_responded, 'error:', n_error, file=sys.stderr)
 
-    print('SINCE=%sZ' % DT.datetime.utcfromtimestamp(start).isoformat(), file=sys.stderr)
+    future_queue.join()
+
     print('requested', n_requested, 'invocations', file=sys.stderr)
+    print('SINCE=%sZ' % DT.datetime.utcfromtimestamp(start).isoformat(), file=sys.stderr)
+    print('FINISH=%sZ' % DT.datetime.utcfromtimestamp(time.time()).isoformat(), file=sys.stderr)
     return
 
 if __name__ == '__main__':
     session.auth = tuple(os.environ['AUTH'].split(':'))
     APIHOST = os.environ['APIHOST']
+    future_session = FuturesSession(session=session, max_workers=8)
 
     params = json.load(sys.stdin)
     if len(sys.argv) == 2:
@@ -131,4 +185,4 @@ if __name__ == '__main__':
         json.dump(params, f)
 
     main(**params)
-    print('Finished. run_id:', run_id, file=sys.stderr)
+    print('run_id=%s' % run_id, file=sys.stderr)
