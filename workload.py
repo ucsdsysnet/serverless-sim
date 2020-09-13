@@ -46,11 +46,12 @@ def burst(func, start, duration, parallelism):
     invocs[start] = [Invocation(func, duration) for _ in range(parallelism)]
     return invocs
 
-def burst_parallel_app(func, parallelism, start, end, n_bursts, duration):
+def burst_parallel(id, name, parallelism, start, end, n_bursts, mem_demand, duration):
+    fn = Function(id, mem_demand, name)
     invocs = {}
     for i in range(n_bursts):
-        extend_workload(invocs, burst(func, int(common.gen.randint(start, end)), duration, parallelism))
-    return invocs
+        extend_workload(invocs, burst(fn, int(common.gen.randint(start, end)), duration, parallelism))
+    return invocs, [fn]
 
 def faas(ntasks):
     pass

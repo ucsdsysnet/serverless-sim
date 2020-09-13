@@ -48,7 +48,8 @@ def create_function(function):
         demand = function.demand
         function.function_name = 'loop_new_%d_%d' % (demand * 128, function.function_id)
         assigned_count[demand] += 1
-    res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
+    # res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
+    res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', '128', '-t', '300000', 'functions/sleep.py'])
     res.check_returncode()
 
 def print_responses():
@@ -99,14 +100,18 @@ def stats(workloads):
     durations = []
     memorys = []
     all_invocs = [i for w in workloads for i in w]
+    perfunctionworks = {}
     for i in all_invocs:
         durations.append(i.duration)
         memorys.append(i.function.demand)
         works.append(i.duration * i.function.demand)
+        perfunctionworks[i.function.function_name] = perfunctionworks.get(i.function.function_name, 0) + i.duration * i.function.demand
+    top10 = sorted(perfunctionworks.items(), key=lambda x: x[1], reverse=True)[:10]
     print('duration: average', np.average(durations), np.percentile(durations,1), np.percentile(durations,25), np.percentile(durations,50), np.percentile(durations,75), np.percentile(durations,99))
     print('memorys:', np.percentile(memorys,1), np.percentile(memorys,25), np.percentile(memorys,50), np.percentile(memorys,75), np.percentile(memorys,99))
     print('highest invocations:', max([len(sec) for sec in workloads]))
     print('total invocations:', len(all_invocs), ', workload:', sum(works)/1000, 'sec x core, average ', sum(works)/1000/len(workloads), 'cores')
+    print('top 10 functions:',[(k[:8], v/sum(works)) for k,v in top10])
 
 
 def main(seed, workloads, *args, **kwargs):
