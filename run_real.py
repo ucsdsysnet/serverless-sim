@@ -95,6 +95,9 @@ def request(invocation):
         print('total requested :', n_requested)
     return
 
+def totalwork(invocs):
+    return sum([i.duration * i.function.demand for i in invocs])
+
 def stats(workloads):
     works = []
     durations = []
@@ -159,16 +162,19 @@ def main(seed, workloads, *args, **kwargs):
     while len(wklds) > 0:
         sleep_till(start + epoch)
         offset = time.time()-start-epoch
-        request_with_offset(start+epoch, wklds.get(epoch, []))
+        invocs = wklds.get(epoch, [])
+        request_with_offset(start+epoch, invocs)
         wklds.pop(epoch, None)
         epoch += 1
-        print('epoch:', epoch, 'offset:', offset, 'requested:', n_requested, 'responded:', n_responded, 'error:', n_error, file=sys.stderr)
+        print('epoch:', epoch, 'offset:', offset, 'workload:', totalwork(invocs), 'requested:', n_requested, 'responded:', n_responded, 'error:', n_error, file=sys.stderr)
 
     future_queue.join()
 
     print('requested', n_requested, 'invocations', file=sys.stderr)
-    print('SINCE=%sZ' % DT.datetime.utcfromtimestamp(start).isoformat(), file=sys.stderr)
+    since=DT.datetime.utcfromtimestamp(start).isoformat()[:-4]
+    print('SINCE='+since, file=sys.stderr)
     print('FINISH=%sZ' % DT.datetime.utcfromtimestamp(time.time()).isoformat(), file=sys.stderr)
+    print('totalerror=%d' % n_error)
     return
 
 if __name__ == '__main__':
