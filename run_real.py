@@ -48,8 +48,7 @@ def create_function(function):
         demand = function.demand
         function.function_name = 'loop_new_%d_%d' % (demand * 128, function.function_id)
         assigned_count[demand] += 1
-    # res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
-    res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', '128', '-t', '300000', 'functions/sleep.py'])
+    res = subprocess.run(['wsk', '-i', 'action', 'update', function.function_name, '--kind', 'python:3', '-m', str(int(function.demand*128)), '-t', '300000', 'functions/sleep.py'])
     res.check_returncode()
 
 def print_responses():
@@ -171,7 +170,7 @@ def main(seed, workloads, *args, **kwargs):
     future_queue.join()
 
     print('requested', n_requested, 'invocations', file=sys.stderr)
-    since=DT.datetime.utcfromtimestamp(start).isoformat()[:-4]
+    since=DT.datetime.utcfromtimestamp(start).isoformat()[:23]
     print('SINCE='+since, file=sys.stderr)
     print('FINISH=%sZ' % DT.datetime.utcfromtimestamp(time.time()).isoformat(), file=sys.stderr)
     print('totalerror=%d' % n_error)
