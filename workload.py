@@ -88,12 +88,13 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
     durations = []
     while len(durations) < n_invocations:
         dur = common.gen.lognormvariate(dur_mu, dur_sigma)
-        if dur > 60.0: # timeout
+        if dur > 60.0: # ignore timeouts
             continue
-        if dur < 1.0:
-            durations.append(1)
-        else:
-            durations.append(round(dur))
+        durations.append(dur * 1000)
+        # if dur < 1.0:
+        #     durations.append(1)
+        # else:
+        #     durations.append(round(dur))
 
     # distribution function
     def dist_func(x):
