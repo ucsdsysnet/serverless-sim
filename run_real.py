@@ -10,6 +10,7 @@ import queue
 import hashlib
 import requests
 from requests_futures.sessions import FuturesSession
+from concurrent.futures import ProcessPoolExecutor
 import urllib3
 import subprocess
 import numpy as np
@@ -121,7 +122,8 @@ def stats(workloads):
     print('memorys:', np.percentile(memorys,1), np.percentile(memorys,25), np.percentile(memorys,50), np.percentile(memorys,75), np.percentile(memorys,99))
     print('highest invocations:', max([len(sec) for sec in workloads]))
     print('total invocations:', len(all_invocs), ', workload:', sum(works)/1000, 'sec x core, average ', sum(works)/1000/len(workloads), 'cores')
-    print('top 10 functions:',[(k[:8], v/sum(works)) for k,v in top10])
+    if sum(works) > 0:
+        print('top 10 functions:',[(k[:8], v/sum(works)) for k,v in top10])
 
 
 def main(seed, workloads, *args, **kwargs):
@@ -142,7 +144,7 @@ def main(seed, workloads, *args, **kwargs):
     stats(wklds.values())
     print()
 
-    if not kwargs['skip_creation']:
+    if not kwargs.get('skip_creation', False):
         for f in all_functions:
             create_function(f)
 
@@ -190,7 +192,7 @@ def main(seed, workloads, *args, **kwargs):
 if __name__ == '__main__':
     session.auth = tuple(os.environ['AUTH'].split(':'))
     APIHOST = os.environ['APIHOST']
-    future_session = FuturesSession(session=session, max_workers=16)
+    future_session = FuturesSession(session=session, executor=ProcessPoolExecutor(max_workers=16))
 
     params = json.load(sys.stdin)
     if len(sys.argv) == 2:
