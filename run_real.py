@@ -25,8 +25,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(
-    pool_connections=100,
-    pool_maxsize=100)
+    pool_connections=1000,
+    pool_maxsize=1000)
 session.mount('http://', adapter)
 session.verify = False
 
@@ -39,6 +39,8 @@ assigned_count = defaultdict(lambda: 0)
 n_requested = 0
 n_responded = 0
 n_error = 0
+
+stopped = False
 
 def get_func(invocation):
     return invocation.function.function_name
@@ -53,12 +55,13 @@ def create_function(function):
 
 def print_responses():
     while True:
-        global n_responded, n_error
+        global n_responded, n_error, stopped
         future = future_queue.get()
         n_responded += 1
         if not future.result().ok:
             n_error += 1
-            # print('response:', future.result().json(), file=sys.stderr)
+            print('response:', future.result().text, file=sys.stderr)
+            stopped = True
         future_queue.task_done()
 
 def async_request(invocation):
@@ -69,7 +72,7 @@ def async_request(invocation):
     # print('requesting:', fn, 'at', time.time(), 'for', invocation.duration/1000, 'seconds', file=sys.stderr)
     url = 'https://' + APIHOST + '/api/v1/namespaces/_/actions/' + fn
     headers = {'Content-Type':'application/json'}
-    jsondata = {"duration":invocation.duration/1000, "long":False}
+    jsondata = {"duration":invocation.duration/1000}
     future = future_session.request('post', url, params={'blocking':'false'}, headers=headers, json=jsondata)
     future_queue.put(future)
     # if n_requested % 1000 == 0:
@@ -96,6 +99,11 @@ def request(invocation):
 
 def totalwork(invocs):
     return sum([i.duration * i.function.demand for i in invocs])
+
+def assign_names(functions):
+    for function in functions:
+        if not function.function_name:
+            function.function_name = 'f_%d' % function.function_id
 
 def stats(workloads):
     works = []
@@ -129,11 +137,14 @@ def main(seed, workloads, *args, **kwargs):
 
     list_of_workloads = list(wklds.values())
     lengths = [len(s) for s in list_of_workloads]
+
+    assign_names(all_functions)
     stats(wklds.values())
     print()
 
-    for f in all_functions:
-       create_function(f)
+    if not kwargs['skip_creation']:
+        for f in all_functions:
+            create_function(f)
 
     threading.Thread(target=print_responses, daemon=True).start()
 
@@ -158,14 +169,14 @@ def main(seed, workloads, *args, **kwargs):
 
     # start requests
     epoch = 0
-    while len(wklds) > 0:
+    while len(wklds) > 0 and not stopped:
         sleep_till(start + epoch)
         offset = time.time()-start-epoch
         invocs = wklds.get(epoch, [])
         request_with_offset(start+epoch, invocs)
         wklds.pop(epoch, None)
         epoch += 1
-        print('epoch:', epoch, 'offset:', offset, 'workload:', totalwork(invocs), 'requested:', n_requested, 'responded:', n_responded, 'error:', n_error, file=sys.stderr)
+        print('epoch:', epoch, 'offset:', offset, 'invocations:', len(invocs), 'workload:', totalwork(invocs), 'requested:', n_requested, 'responded:', n_responded, 'error:', n_error, file=sys.stderr)
 
     future_queue.join()
 
@@ -179,7 +190,7 @@ def main(seed, workloads, *args, **kwargs):
 if __name__ == '__main__':
     session.auth = tuple(os.environ['AUTH'].split(':'))
     APIHOST = os.environ['APIHOST']
-    future_session = FuturesSession(session=session, max_workers=8)
+    future_session = FuturesSession(session=session, max_workers=16)
 
     params = json.load(sys.stdin)
     if len(sys.argv) == 2:
