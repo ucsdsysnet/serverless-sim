@@ -17,3 +17,13 @@ def random_from_histogram(hist, bins, n):
     values = [gen.random() for _ in range(n)]
     value_bins = np.searchsorted(cdf, values)
     return bin_midpoints[value_bins]
+
+'''
+Choose n indices from histogram
+'''
+def choose_from_histogram(hist, n):
+    cdf = np.cumsum(hist)
+    cdf = cdf / cdf[-1]
+    values = [gen.random() for _ in range(n)]
+    value_bins = np.searchsorted(cdf, values)
+    return value_bins

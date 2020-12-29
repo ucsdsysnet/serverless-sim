@@ -73,11 +73,19 @@ def azure(span, n_functions, n_invocations, mem_hist, mem_bins, dist_mu, dist_si
     # allocate invocations to functions
     function_dist = [0] * n_functions # fn -> invocations of that fn
     created = 0
-    while created < n_invocations:
-        fnid = int(common.gen.lognormvariate(dist_mu, dist_sigma) * n_functions)
-        if fnid < n_functions:
-            function_dist[fnid] += 1
-            created += 1
+    if 'dist_file' in kwargs:
+        dist_file = tracedir + '/' + kwargs['dist_file']
+        with open(dist_file, 'r') as f:
+            hist = [float(l.strip()) for l in f]
+        indices = common.choose_from_histogram(hist[:n_functions], n_invocations)
+        for idx in indices:
+            function_dist[idx] += 1
+    else:
+        while created < n_invocations:
+            fnid = int(common.gen.lognormvariate(dist_mu, dist_sigma) * n_functions)
+            if fnid < n_functions:
+                function_dist[fnid] += 1
+                created += 1
 
     # allocate CVs of IAT for each function
     CVs = []
